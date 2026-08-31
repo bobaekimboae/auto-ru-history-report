@@ -1,0 +1,6 @@
+.DS_Store
+Thumbs.db
+*.log
+local-*.png
+headless-*.png
+.tmp-browser-*/
