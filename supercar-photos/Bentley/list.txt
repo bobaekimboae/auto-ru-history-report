@@ -1,10 +1,10 @@
-01	Bentley Flying Spur	995000 SEK	https://images.blocketcdn.se/dynamic/default/item/27214869/f4d84d47-56b5-4df0-a5d9-fcdd6791c941
-02	Bentley Continental GTC	2295000 SEK	https://images.blocketcdn.se/dynamic/default/item/27182995/e8d891ed-7938-4886-a0e7-a03070f79363
-03	Bentley Continental Flying Spur	279900 SEK	https://images.blocketcdn.se/dynamic/default/item/26617279/e3c43890-b74b-4076-8762-eacbf189547b
-04	Bentley Mark VI	259900 SEK	https://images.blocketcdn.se/dynamic/default/item/25367588/a8d1671c-5087-404f-89c0-68e6393c586e
-05	Bentley Continental GT	1250000 SEK	https://images.blocketcdn.se/dynamic/default/item/27014974/0102d59a-3241-480b-be5e-fdc99d7956d1
-06	Bentley Continental GT	1795000 SEK	https://images.blocketcdn.se/dynamic/default/item/21449257/b5726758-78e7-457d-89da-e0a3c7b99054
-07	Bentley Continental GT	349900 SEK	https://images.blocketcdn.se/dynamic/default/item/26999769/8eec5d8e-cef2-4e21-8f7f-699a7f22d967
-08	Bentley Continental GT	675000 SEK	https://images.blocketcdn.se/dynamic/default/item/26802205/a8d4e214-dbfc-4b56-b721-a97760ebccc6
-09	Bentley Continental GT	398000 SEK	https://images.blocketcdn.se/dynamic/default/item/15178546/02524fa4-14fc-4a04-b310-7b4cd16c8095
-10	Bentley Continental	629800 SEK	https://images.blocketcdn.se/dynamic/default/item/26954673/77763563-8012-4006-b4cb-d0896b818a72
+Bentley_Flying-Spur_2014-03-24.jpg	Bentley Flying Spur	Registreringsdatum=2014-03-24	995000 SEK	https://www.blocket.se/mobility/item/27214869
+Bentley_Continental-GTC_2022-03-09.jpg	Bentley Continental GTC	Registreringsdatum=2022-03-09	2295000 SEK	https://www.blocket.se/mobility/item/27182995
+Bentley_Continental-Flying-Spur_2019-01-17.jpg	Bentley Continental Flying Spur	Registreringsdatum=2019-01-17	279900 SEK	https://www.blocket.se/mobility/item/26617279
+Bentley_vriga_1995-05-17.jpg	Bentley Mark VI	Registreringsdatum=1995-05-17	259900 SEK	https://www.blocket.se/mobility/item/25367588
+Bentley_Continental-GT_2016-05-20.jpg	Bentley Continental GT	Registreringsdatum=2016-05-20	1250000 SEK	https://www.blocket.se/mobility/item/27014974
+Bentley_Continental-GT_2019-01-23.jpg	Bentley Continental GT	Registreringsdatum=2019-01-23	1795000 SEK	https://www.blocket.se/mobility/item/21449257
+Bentley_Continental-GT_2026-09-04.jpg	Bentley Continental GT	Registreringsdatum=2026-09-04	349900 SEK	https://www.blocket.se/mobility/item/26999769
+Bentley_Continental-GT_2020-07-15.jpg	Bentley Continental GT	Registreringsdatum=2020-07-15	675000 SEK	https://www.blocket.se/mobility/item/26802205
+Bentley_Continental-GT_2004-08-31.jpg	Bentley Continental GT	Registreringsdatum=2004-08-31	398000 SEK	https://www.blocket.se/mobility/item/15178546
+Bentley_Continental_2015-09-25.jpg	Bentley Continental	Registreringsdatum=2015-09-25	629800 SEK	https://www.blocket.se/mobility/item/26954673

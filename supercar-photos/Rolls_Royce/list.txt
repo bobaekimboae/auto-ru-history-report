@@ -1,10 +1,10 @@
-01	Rolls Royce Silver Spur	100000 SEK	https://images.blocketcdn.se/dynamic/default/item/26618033/aba64ef1-134f-4199-829f-a13cf3cbea97
-02	Rolls Royce Ghost	1395000 SEK	https://images.blocketcdn.se/dynamic/default/item/26992997/3081ed51-6c11-4c58-8cf2-5fdfda5e11ab
-03	Rolls Royce Cullinan	5500000 SEK	https://images.blocketcdn.se/dynamic/default/item/27011062/6d08738d-d911-443d-81e5-346815c231b0
-04	Rolls Royce Silver Shadow	175000 SEK	https://images.blocketcdn.se/dynamic/default/item/26966648/5b76012b-cb56-4002-bfb6-7bdf7d9583dd
-05	Rolls Royce Silver Spirit	55000 SEK	https://images.blocketcdn.se/dynamic/default/item/26842006/5bbfb98b-b994-4c4a-8f34-8da34da58800
-06	Rolls Royce Silver Spur	199900 SEK	https://images.blocketcdn.se/dynamic/default/item/23979711/6e5c7c9f-fefc-403d-b1ea-de87d5cf5575
-07	Rolls Royce Ghost	3895000 SEK	https://images.blocketcdn.se/dynamic/default/item/26825478/58a83f41-9af6-45d8-be00-5baddcd58ffc
-08	Rolls Royce Silver Shadow	80000 SEK	https://images.blocketcdn.se/dynamic/default/item/26758157/9e7679d9-7181-4aab-922c-68dc8037d9cd
-09	Rolls Royce Ghost	1699900 SEK	https://images.blocketcdn.se/dynamic/default/item/25062702/206ad8dc-a6cf-4750-907c-08d92a43a37f
-10	Rolls Royce Silver Shadow	150000 SEK	https://images.blocketcdn.se/dynamic/default/item/26101031/70b13253-ddf5-49a6-b437-d8045cc6f930
+Rolls-Royce_Silver-Spur_1987-09-22.jpg	Rolls Royce Silver Spur	Registreringsdatum=1987-09-22	100000 SEK	https://www.blocket.se/mobility/item/26618033
+Rolls-Royce_Ghost_2012.jpg	Rolls Royce Ghost	Modellår=2012	1395000 SEK	https://www.blocket.se/mobility/item/26992997
+Rolls-Royce_Cullinan_2023.jpg	Rolls Royce Cullinan	Modellår=2023	5500000 SEK	https://www.blocket.se/mobility/item/27011062
+Rolls-Royce_Silver-Shadow_1987-05-01.jpg	Rolls Royce Silver Shadow	Registreringsdatum=1987-05-01	175000 SEK	https://www.blocket.se/mobility/item/26966648
+Rolls-Royce_Silver-Spirit_2018-06-11.jpg	Rolls Royce Silver Spirit	Registreringsdatum=2018-06-11	55000 SEK	https://www.blocket.se/mobility/item/26842006
+Rolls-Royce_Silver-Spur_1989-09-04.jpg	Rolls Royce Silver Spur	Registreringsdatum=1989-09-04	199900 SEK	https://www.blocket.se/mobility/item/23979711
+Rolls-Royce_Ghost_2022-09-01.jpg	Rolls Royce Ghost	Registreringsdatum=2022-09-01	3895000 SEK	https://www.blocket.se/mobility/item/26825478
+Rolls-Royce_Silver-Shadow_1991-06-07.jpg	Rolls Royce Silver Shadow	Registreringsdatum=1991-06-07	80000 SEK	https://www.blocket.se/mobility/item/26758157
+Rolls-Royce_Ghost_2026-05-01.jpg	Rolls Royce Ghost	Registreringsdatum=2026-05-01	1699900 SEK	https://www.blocket.se/mobility/item/25062702
+Rolls-Royce_Silver-Shadow_1988-12-12.jpg	Rolls Royce Silver Shadow	Registreringsdatum=1988-12-12	150000 SEK	https://www.blocket.se/mobility/item/26101031
