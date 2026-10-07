@@ -1,0 +1,10 @@
+01	Lamborghini Huracan	2950000 SEK	https://images.blocketcdn.se/dynamic/default/item/13805087/8617bc36-22ab-44f5-a10a-dd61e7f3d21c
+02	Lamborghini Huracan	3199900 SEK	https://images.blocketcdn.se/dynamic/default/item/27183120/4b15a6f7-bca2-4b16-9d05-a5478cf6ac98
+03	Lamborghini Urus	2049000 SEK	https://images.blocketcdn.se/dynamic/default/item/27150899/07975ea0-5e4f-47f3-ba2c-cc685050cd4f
+04	Lamborghini Urus	3899900 SEK	https://images.blocketcdn.se/dynamic/default/item/26506246/06ef40e1-7c90-4703-b90c-37c2bed2503c
+05	Lamborghini Urus	3395000 SEK	https://images.blocketcdn.se/dynamic/default/item/26840950/6f8d88d6-8f4a-4cb2-bbb5-e2a1f0de8f19
+06	Lamborghini Huracan	3949000 SEK	https://images.blocketcdn.se/dynamic/default/item/27061678/28cb40ff-0e6f-4f79-b073-2cad87f4fc99
+07	Lamborghini Huracan	3895000 SEK	https://images.blocketcdn.se/dynamic/default/item/27061664/2e0ff13d-ce48-48b4-8488-8693b3c4176e
+08	Lamborghini Temerario	4950000 SEK	https://images.blocketcdn.se/dynamic/default/item/26396170/4a48a574-59f4-4337-adc0-c163dd581215
+09	Lamborghini Urus	3589000 SEK	https://images.blocketcdn.se/dynamic/default/item/26775119/9d46f375-0bbb-4fba-a3e5-92a259cbcfa3
+10	Lamborghini Temerario	4249000 SEK	https://images.blocketcdn.se/dynamic/default/item/26875423/05537521-0fb7-4cb4-988e-0ccdfc8adf35

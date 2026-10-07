@@ -1,0 +1,10 @@
+01	Lotus Emira	1395000 SEK	https://images.blocketcdn.se/dynamic/default/item/27213524/8a9abae6-53d2-496a-ac12-44b6623560e4
+02	Lotus Eletre	849900 SEK	https://images.blocketcdn.se/dynamic/default/item/25826922/7645882f-1353-4fa7-bb16-c2d991cd886f
+03	Lotus Eletre	1049500 SEK	https://images.blocketcdn.se/dynamic/default/item/18187436/910ef2fc-0c94-4e27-b715-29eba8c4abfd
+04	Lotus Emira	1445000 SEK	https://images.blocketcdn.se/dynamic/default/item/13563664/a2202cd1-5c42-42e3-b9ec-4c8ff1269495
+05	Lotus Emeya	949500 SEK	https://images.blocketcdn.se/dynamic/default/item/18115515/8f1d77ea-f694-46f6-a892-09a4e8a9b1f1
+06	Lotus Emeya	1129500 SEK	https://images.blocketcdn.se/dynamic/default/item/18111808/60c95e08-7787-4563-952e-53726aa0543e
+07	Lotus Eletre	1129500 SEK	https://images.blocketcdn.se/dynamic/default/item/20419793/49ebe7a6-6eeb-4623-80ec-aa0ebc14bdec
+08	Lotus Emeya	969500 SEK	https://images.blocketcdn.se/dynamic/default/item/13462352/488645c7-4e6d-447e-9f48-6368cb93071e
+09	Lotus Emeya	929500 SEK	https://images.blocketcdn.se/dynamic/default/item/17905350/a5343b8b-1a28-44e8-979a-a7f06fa601cb
+10	Lotus Emeya	1029500 SEK	https://images.blocketcdn.se/dynamic/default/item/13472116/09bbef93-60a5-40ba-972a-4600c9381010

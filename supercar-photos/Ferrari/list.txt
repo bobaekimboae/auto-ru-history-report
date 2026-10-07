@@ -1,0 +1,10 @@
+01	Ferrari 360	1199990 SEK	https://images.blocketcdn.se/dynamic/default/item/23461619/931ff1c6-c707-42a0-b5e6-13a352c7ffd3
+02	Ferrari 812 Superfast	3750000 SEK	https://images.blocketcdn.se/dynamic/default/item/27202816/10197767-1127-4145-9b6e-62e1f20cb868
+03	Ferrari 296 GTS	3395000 SEK	https://images.blocketcdn.se/dynamic/default/item/13729094/f52913f0-c8bd-4235-a390-a31ff545be70
+04	Ferrari Purosangue	6690900 SEK	https://images.blocketcdn.se/dynamic/default/item/26410728/8aff2686-00c8-4b9e-99e7-a258ad8f7339
+05	Ferrari 488 GTB	2695000 SEK	https://images.blocketcdn.se/dynamic/default/item/24675814/536cd08c-ffc9-464e-a0fc-e0865bf83640
+06	Ferrari Dino 308	435000 SEK	https://images.blocketcdn.se/dynamic/default/item/24498097/7166b7e3-44a9-441b-8151-04f8bebac0ac
+07	Ferrari California	1199900 SEK	https://images.blocketcdn.se/dynamic/default/item/27086048/7ba1f9d5-3ba7-4bbc-ad2d-5363fd906648
+08	Ferrari 308	895000 SEK	https://images.blocketcdn.se/dynamic/default/item/27082302/dbfbae48-d715-47e0-aa53-5baebee56c86
+09	Ferrari California	1259900 SEK	https://images.blocketcdn.se/dynamic/default/item/24543547/a4875fa0-ff31-4ef9-9149-9d1fd2732836
+10	Ferrari California	0 SEK	https://images.blocketcdn.se/dynamic/default/item/27070982/333ee8a9-3b04-4430-b96a-699131da5f77

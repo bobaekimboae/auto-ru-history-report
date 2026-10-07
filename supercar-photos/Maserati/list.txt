@@ -1,0 +1,10 @@
+01	Maserati Levante	319800 SEK	https://images.blocketcdn.se/dynamic/default/item/26589906/809799f3-7ecc-4c4b-ae86-f6a51311af45
+02	Maserati Levante	369000 SEK	https://images.blocketcdn.se/dynamic/default/item/25295280/24774f51-8efa-413c-b8bf-9d84d697b14a
+03	Maserati Levante	375000 SEK	https://images.blocketcdn.se/dynamic/default/item/25570136/18e1386d-5228-4467-b55f-ce447de0d2c1
+04	Maserati Levante	330000 SEK	https://images.blocketcdn.se/dynamic/default/item/24895647/9c38e23b-03db-4800-a468-71672b4b6a71
+05	Maserati Levante	369900 SEK	https://images.blocketcdn.se/dynamic/default/item/27078818/cd9da243-b7fe-45a4-a38d-84b716f11bc9
+06	Maserati Levante	689900 SEK	https://images.blocketcdn.se/dynamic/default/item/27078336/2180c991-47a4-489e-825c-0e0d32fd874d
+07	Maserati Ghibli	309900 SEK	https://images.blocketcdn.se/dynamic/default/item/27076803/7fbb6f29-12fe-4ad1-9117-a10624e9d893
+08	Maserati Quattroporte	190000 SEK	https://images.blocketcdn.se/dynamic/default/item/26822418/af807f5c-9e6c-4ed2-bf29-9f054968d2e8
+09	Maserati Levante	429000 SEK	https://images.blocketcdn.se/dynamic/default/item/16946595/5a4af1a2-b7bc-4b7b-9d46-c00a8ca395a5
+10	Maserati Levante	259000 SEK	https://images.blocketcdn.se/dynamic/default/item/22278024/27baa67b-ee5c-470a-942c-0727456a9e33

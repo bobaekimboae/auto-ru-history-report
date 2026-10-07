@@ -1,0 +1,10 @@
+01	Aston Martin DB9	1000000 SEK	https://images.blocketcdn.se/dynamic/default/item/27198079/86e0b706-4ad5-44d3-ad6a-e44261562ea6
+02	Aston Martin DBX	1695000 SEK	https://images.blocketcdn.se/dynamic/default/item/23927390/eeb284d8-d5d7-4221-8081-715f49817012
+03	Aston Martin DB12	2599900 SEK	https://images.blocketcdn.se/dynamic/default/item/24860391/4f93e776-e4fc-4713-8cdc-0602f82cb3e0
+04	Aston Martin DB12	2995000 SEK	https://images.blocketcdn.se/dynamic/default/item/26405026/0d1fc3f0-2654-4c01-8a23-b176ca855cef
+05	Aston Martin DB12	3195000 SEK	https://images.blocketcdn.se/dynamic/default/item/26216224/9036f9fe-8a37-44cc-81ac-3d9cd9367672
+06	Aston Martin DB12	2995000 SEK	https://images.blocketcdn.se/dynamic/default/item/26966219/a15adc6f-0cab-43e7-ac36-f77cdecf562e
+07	Aston Martin DB9	599000 SEK	https://images.blocketcdn.se/dynamic/default/item/27020635/456add35-6b81-432c-9fb7-ce33543f0bfa
+08	Aston Martin DB9	1000000 SEK	https://images.blocketcdn.se/dynamic/default/item/26878322/03120825-14d8-4f11-8318-db3a8302348f
+09	Aston Martin DBX707	1499000 SEK	https://images.blocketcdn.se/dynamic/default/item/25850695/0bfedcb0-e452-4b14-82ca-f1a562f12928
+10	Aston Martin DB9	599900 SEK	https://images.blocketcdn.se/dynamic/default/item/17910910/5132a4cb-662b-471e-b29a-dfa42ba40edd
