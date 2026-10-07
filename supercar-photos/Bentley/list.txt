@@ -1,7 +1,7 @@
 Bentley_Flying-Spur_2014-03-24.jpg	Bentley Flying Spur	Registreringsdatum=2014-03-24	995000 SEK	https://www.blocket.se/mobility/item/27214869
 Bentley_Continental-GTC_2022-03-09.jpg	Bentley Continental GTC	Registreringsdatum=2022-03-09	2295000 SEK	https://www.blocket.se/mobility/item/27182995
 Bentley_Continental-Flying-Spur_2019-01-17.jpg	Bentley Continental Flying Spur	Registreringsdatum=2019-01-17	279900 SEK	https://www.blocket.se/mobility/item/26617279
-Bentley_vriga_1995-05-17.jpg	Bentley Mark VI	Registreringsdatum=1995-05-17	259900 SEK	https://www.blocket.se/mobility/item/25367588
+Bentley_Mark-VI_1995-05-17.jpg	Bentley Mark VI	Registreringsdatum=1995-05-17	259900 SEK	https://www.blocket.se/mobility/item/25367588
 Bentley_Continental-GT_2016-05-20.jpg	Bentley Continental GT	Registreringsdatum=2016-05-20	1250000 SEK	https://www.blocket.se/mobility/item/27014974
 Bentley_Continental-GT_2019-01-23.jpg	Bentley Continental GT	Registreringsdatum=2019-01-23	1795000 SEK	https://www.blocket.se/mobility/item/21449257
 Bentley_Continental-GT_2026-09-04.jpg	Bentley Continental GT	Registreringsdatum=2026-09-04	349900 SEK	https://www.blocket.se/mobility/item/26999769
