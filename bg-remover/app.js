@@ -8,7 +8,7 @@ const STORE_KEY = 'bgr-settings-v1';
 const DEFAULTS = {
   bg: 'studio', bgColor: '#dfe6ee', shadow: 60, reflection: false,
   ratio: '4:3', carSize: 84, floorPos: 86,
-  wmOn: false, wmName: '', wmPhone: '', wmLogo: '', wmStyle: 'band',
+  wmOn: false, wmName: '', wmPhone: '', wmLogo: '', wmStyle: 'band', signSub: '',
   prefix: '', format: 'jpg',
 };
 
@@ -253,6 +253,8 @@ function render(item, target, { compare = false } = {}) {
   let scale = (W * s.carSize / 100) / b.w;
   scale = Math.min(scale, (H * 0.7) / b.h);
   const floorY = H * s.floorPos / 100;
+  // 상사 쇼룸 간판 자리(위쪽 30%)는 비워 두어 사진마다 간판 크기가 같게 한다
+  if (s.bg.startsWith('brand') && (s.wmName.trim() || state.logoImage)) scale = Math.min(scale, (floorY - H * SIGN_ZONE) / b.h);
   const carH = b.h * scale;
   const dx = W / 2 - (b.x + b.w / 2) * scale;
   const dy = floorY - (b.y + b.h) * scale;
@@ -318,6 +320,10 @@ function drawBackground(ctx, W, H, horizon) {
     case 'color':
       ctx.fillStyle = s.bgColor; ctx.fillRect(0, 0, W, H);
       break;
+    case 'brand-light':
+    case 'brand-dark':
+      drawBrandStudio(ctx, W, H, horizon, s.bg === 'brand-dark');
+      break;
     case 'image':
       if (state.bgImage) drawCover(ctx, state.bgImage, W, H);
       else { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
@@ -325,6 +331,168 @@ function drawBackground(ctx, W, H, horizon) {
     default: // transparent
       break;
   }
+}
+
+// 상사 쇼룸: 슬랫 벽, 천장 LED 바, 벽에 붙은 입체 간판(상사명·로고·문구), 걸레받이 조명, 광택 바닥
+const SIGN_ZONE = 0.31;
+const SIGN_FONT = '"Gothic A1", "IBM Plex Sans KR", "Malgun Gothic", sans-serif';
+
+function drawBrandStudio(ctx, W, H, horizon, dark) {
+  const c = dark
+    ? { wall: ['#202328', '#131417'], slat: 'rgba(255,255,255,0.035)', slatShade: 'rgba(0,0,0,0.22)', floor: ['#2b2e33', '#0a0b0d'],
+        led: '#ffffff', ledGlow: 'rgba(255,255,255,0.55)', cove: 'rgba(255,244,228,0.55)', sheen: 'rgba(255,255,255,0.10)' }
+    : { wall: ['#f6f7f8', '#e6e8eb'], slat: 'rgba(255,255,255,0.7)', slatShade: 'rgba(30,36,44,0.05)', floor: ['#d9dce0', '#f4f5f6'],
+        led: '#ffffff', ledGlow: 'rgba(255,255,255,0.9)', cove: 'rgba(255,255,255,0.95)', sheen: 'rgba(255,255,255,0.45)' };
+
+  // 벽과 세로 슬랫 패널
+  ctx.fillStyle = vgrad(ctx, 0, horizon, c.wall);
+  ctx.fillRect(0, 0, W, horizon);
+  const slatW = W / 44;
+  for (let x = 0; x < W; x += slatW) {
+    ctx.fillStyle = c.slatShade;
+    ctx.fillRect(Math.round(x), 0, Math.max(1, slatW * 0.08), horizon);
+    ctx.fillStyle = c.slat;
+    ctx.fillRect(Math.round(x + slatW * 0.08), 0, 1, horizon);
+  }
+  // 벽 가장자리를 어둡게 해 가운데로 시선을 모은다
+  const vig = ctx.createRadialGradient(W / 2, horizon * 0.55, W * 0.15, W / 2, horizon * 0.55, W * 0.75);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, dark ? 'rgba(0,0,0,0.45)' : 'rgba(40,46,54,0.10)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, horizon);
+
+  // 바닥
+  ctx.fillStyle = vgrad(ctx, horizon, H, c.floor);
+  ctx.fillRect(0, horizon, W, H - horizon);
+  const sheen = ctx.createRadialGradient(W / 2, horizon + (H - horizon) * 0.35, 0, W / 2, horizon + (H - horizon) * 0.35, W * 0.55);
+  sheen.addColorStop(0, c.sheen);
+  sheen.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.save();
+  ctx.translate(0, horizon);
+  ctx.scale(1, 0.45);
+  ctx.translate(0, -horizon);
+  ctx.fillStyle = sheen;
+  ctx.fillRect(0, horizon, W, (H - horizon) / 0.45);
+  ctx.restore();
+
+  // 천장 LED 바
+  const ledY = H * 0.035, ledH = Math.max(3, H * 0.007);
+  ctx.save();
+  ctx.shadowColor = c.ledGlow;
+  ctx.shadowBlur = H * 0.04;
+  ctx.fillStyle = c.led;
+  roundRect(ctx, W * 0.16, ledY, W * 0.68, ledH, ledH / 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 걸레받이 간접 조명
+  ctx.save();
+  ctx.shadowColor = c.cove;
+  ctx.shadowBlur = H * 0.03;
+  ctx.fillStyle = c.cove;
+  ctx.fillRect(0, horizon - Math.max(1, H * 0.003), W, Math.max(1.5, H * 0.003));
+  ctx.restore();
+
+  drawSign(ctx, W, H, Math.min(horizon - H * 0.05, H * (SIGN_ZONE - 0.025)), dark);
+}
+
+function drawSign(ctx, W, H, bottom, dark) {
+  const s = state.settings;
+  const name = s.wmName.trim();
+  const sub = s.signSub.trim();
+  const logo = state.logoImage;
+  if (!name && !logo) return;
+  const top = H * 0.085;
+  const avail = bottom - top;
+  if (avail < H * 0.05) return;
+
+  let fs = Math.min(W * 0.08, avail * (sub ? 0.56 : 0.78));
+  ctx.font = `800 ${fs}px ${SIGN_FONT}`;
+  ctx.letterSpacing = `${fs * 0.04}px`;
+  const logoH = fs * 1.05;
+  const logoW = logo ? logoH * logo.width / logo.height : 0;
+  const gap = logo && name ? fs * 0.35 : 0;
+  let nameW = name ? ctx.measureText(name).width : 0;
+  const maxW = W * 0.64;
+  if (nameW + logoW + gap > maxW) {
+    const k = maxW / (nameW + logoW + gap);
+    fs *= k;
+    ctx.font = `800 ${fs}px ${SIGN_FONT}`;
+    ctx.letterSpacing = `${fs * 0.04}px`;
+    nameW = name ? ctx.measureText(name).width : 0;
+  }
+  const lh = logo ? fs * 1.05 : 0;
+  const lw = logo ? lh * logo.width / logo.height : 0;
+  const g = logo && name ? fs * 0.35 : 0;
+  const subFs = fs * 0.27;
+  const blockH = fs + (sub ? subFs * 2.2 : 0);
+  const y0 = top + (avail - blockH) / 2;
+  const cy = y0 + fs / 2;
+  let x = (W - (lw + g + nameW)) / 2;
+
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+
+  if (logo) {
+    if (dark) { ctx.shadowColor = 'rgba(255,255,255,0.35)'; ctx.shadowBlur = fs * 0.5; }
+    else { ctx.shadowColor = 'rgba(20,24,30,0.28)'; ctx.shadowBlur = fs * 0.12; ctx.shadowOffsetX = fs * 0.04; ctx.shadowOffsetY = fs * 0.06; }
+    ctx.drawImage(logo, x, cy - lh / 2, lw, lh);
+    ctx.shadowColor = 'transparent';
+    x += lw + g;
+  }
+
+  if (name) {
+    if (dark) {
+      // 뒤에서 벽을 비추는 헤일로 조명
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,240,220,0.9)';
+      ctx.shadowBlur = fs * 0.55;
+      ctx.fillStyle = 'rgba(255,240,220,0.35)';
+      ctx.fillText(name, x, cy);
+      ctx.restore();
+      const face = ctx.createLinearGradient(0, cy - fs / 2, 0, cy + fs / 2);
+      face.addColorStop(0, '#ffffff');
+      face.addColorStop(1, '#d9dde3');
+      ctx.fillStyle = face;
+      ctx.fillText(name, x, cy);
+    } else {
+      // 벽에서 띄운 금속 글자: 측면 두께 + 벽 그림자 + 브러시드 면
+      ctx.save();
+      ctx.shadowColor = 'rgba(20,24,30,0.32)';
+      ctx.shadowBlur = fs * 0.14;
+      ctx.shadowOffsetX = fs * 0.05;
+      ctx.shadowOffsetY = fs * 0.08;
+      ctx.fillStyle = '#1d2126';
+      ctx.fillText(name, x, cy);
+      ctx.restore();
+      const depth = Math.max(1, fs * 0.035);
+      ctx.fillStyle = '#0f1215';
+      for (let d = depth; d > 0; d -= 1) ctx.fillText(name, x + d * 0.6, cy + d);
+      const face = ctx.createLinearGradient(0, cy - fs / 2, 0, cy + fs / 2);
+      face.addColorStop(0, '#4a525c');
+      face.addColorStop(0.5, '#2a3037');
+      face.addColorStop(1, '#1a1e23');
+      ctx.fillStyle = face;
+      ctx.fillText(name, x, cy);
+    }
+  }
+
+  if (sub) {
+    ctx.font = `600 ${subFs}px ${SIGN_FONT}`;
+    ctx.letterSpacing = `${subFs * 0.32}px`;
+    ctx.textAlign = 'center';
+    const sy = y0 + fs + subFs * 1.25;
+    const tw = ctx.measureText(sub).width;
+    ctx.fillStyle = dark ? 'rgba(255,255,255,0.78)' : 'rgba(30,35,42,0.72)';
+    ctx.fillText(sub, W / 2 + subFs * 0.16, sy);
+    // 문구 양옆 가는 선
+    ctx.fillStyle = dark ? 'rgba(255,255,255,0.35)' : 'rgba(30,35,42,0.3)';
+    const lineW = Math.min(W * 0.08, fs * 1.2);
+    ctx.fillRect(W / 2 - tw / 2 - subFs - lineW, sy - 0.5, lineW, 1.5);
+    ctx.fillRect(W / 2 + tw / 2 + subFs * 0.5, sy - 0.5, lineW, 1.5);
+  }
+  ctx.restore();
 }
 
 // 차량 아랫선(각 열에서 가장 아래 불투명 지점). 3/4 각도 사진도 바퀴마다 높이가 달라 이 선을 따라 그림자를 깐다.
@@ -508,6 +676,7 @@ function drawStage() {
   const note = $('stageNote');
   if (item.status === 'error') { note.hidden = false; note.textContent = '이 사진은 배경을 지우지 못했어요. 다른 사진으로 다시 올려 주세요.'; }
   else if (state.comparing) { note.hidden = false; note.textContent = '원본 사진'; }
+  else if (state.settings.bg.startsWith('brand') && !state.settings.wmName.trim() && !state.logoImage) { note.hidden = false; note.textContent = '상사 정보에 상사명을 넣으면 벽에 간판이 들어가요'; }
   else if (item.keep) { note.hidden = false; note.textContent = '배경 유지: 비율과 상사 정보만 적용돼요'; }
   else if (state.settings.bg === 'transparent' && state.settings.format === 'jpg') { note.hidden = false; note.textContent = 'JPG는 투명 배경을 저장할 수 없어 흰색으로 저장돼요'; }
   else note.hidden = true;
@@ -738,7 +907,7 @@ function applySettingsToUI() {
   $('carSize').value = s.carSize; $('carSizeOut').textContent = `${s.carSize}%`;
   $('floorPos').value = s.floorPos; $('floorPosOut').textContent = `${s.floorPos}%`;
   $('wmOn').checked = s.wmOn; $('wmFields').dataset.off = String(!s.wmOn);
-  $('wmName').value = s.wmName; $('wmPhone').value = s.wmPhone;
+  $('wmName').value = s.wmName; $('wmPhone').value = s.wmPhone; $('signSub').value = s.signSub;
   $('prefix').value = s.prefix;
   const lp = $('logoPreview');
   if (state.logoImage) { lp.replaceChildren(state.logoImage.cloneNode()); $('logoClear').hidden = false; }
@@ -786,8 +955,10 @@ $('ratioSeg').addEventListener('click', (e) => { const b = e.target.closest('[da
 $('wmStyleSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-wm]'); if (b) set({ wmStyle: b.dataset.wm, wmOn: true }); });
 $('formatSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-format]'); if (b) set({ format: b.dataset.format }); });
 $('wmOn').addEventListener('change', (e) => set({ wmOn: e.target.checked }));
-$('wmName').addEventListener('input', (e) => set({ wmName: e.target.value, wmOn: true }));
-$('wmPhone').addEventListener('input', (e) => set({ wmPhone: e.target.value, wmOn: true }));
+const isBrandBg = () => state.settings.bg.startsWith('brand');
+$('wmName').addEventListener('input', (e) => set({ wmName: e.target.value, wmOn: state.settings.wmOn || !isBrandBg() }));
+$('wmPhone').addEventListener('input', (e) => set({ wmPhone: e.target.value, wmOn: state.settings.wmOn || !isBrandBg() }));
+$('signSub').addEventListener('input', (e) => set({ signSub: e.target.value }));
 $('prefix').addEventListener('input', (e) => set({ prefix: e.target.value }));
 $('logoInput').addEventListener('change', async (e) => {
   const f = e.target.files[0];
@@ -796,7 +967,7 @@ $('logoInput').addEventListener('change', async (e) => {
   try {
     const url = await fileToDataUrl(f, 600);
     state.logoImage = await loadImage(url);
-    set({ wmLogo: url, wmOn: true });
+    set({ wmLogo: url, wmOn: state.settings.wmOn || !isBrandBg() });
   } catch { toast('로고 이미지를 열 수 없어요.'); }
 });
 $('logoClear').addEventListener('click', () => { state.logoImage = null; set({ wmLogo: '' }); });
@@ -883,4 +1054,5 @@ window.addEventListener('resize', updateStage);
   renderQueue();
   updateStage();
   document.fonts.ready.then(updateStage);
+  document.fonts.load(`800 40px ${SIGN_FONT}`).then(updateStage).catch(() => {});
 })();

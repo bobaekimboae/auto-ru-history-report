@@ -7,7 +7,7 @@
   <meta name="description" content="중고차 매물 사진의 배경을 지우고 스튜디오 배경, 그림자, 상사 정보를 넣어 한 번에 저장하는 딜러용 도구">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@600;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -112,6 +112,8 @@
       <section class="group">
         <h3>배경</h3>
         <div class="swatches" id="bgSwatches" role="radiogroup" aria-label="배경">
+          <button type="button" role="radio" data-bg="brand-light" class="swatch"><span class="sw sw-brand-light"></span>상사 쇼룸</button>
+          <button type="button" role="radio" data-bg="brand-dark" class="swatch"><span class="sw sw-brand-dark"></span>상사 쇼룸 블랙</button>
           <button type="button" role="radio" data-bg="studio" class="swatch"><span class="sw sw-studio"></span>스튜디오</button>
           <button type="button" role="radio" data-bg="gray" class="swatch"><span class="sw sw-gray"></span>그레이 쇼룸</button>
           <button type="button" role="radio" data-bg="dark" class="swatch"><span class="sw sw-dark"></span>다크 쇼룸</button>
@@ -183,11 +185,15 @@
               <input type="file" id="logoInput" accept="image/*" hidden>
             </div>
           </div>
+          <div class="field">
+            <label for="signSub">간판 아래 문구 <span class="optional">선택</span></label>
+            <input type="text" id="signSub" placeholder="예: 수입차 전문 · 무사고 보증" maxlength="30">
+          </div>
           <div class="segmented segmented-2" id="wmStyleSeg" role="radiogroup" aria-label="표시 방식">
             <button type="button" role="radio" data-wm="band">하단 띠</button>
             <button type="button" role="radio" data-wm="corner">오른쪽 아래</button>
           </div>
-          <p class="hint">상사 정보는 이 브라우저에 기억돼요.</p>
+          <p class="hint">상사명·로고·문구는 "상사 쇼룸" 배경의 벽 간판에도 쓰여요. 이 브라우저에 기억돼요.</p>
         </div>
       </section>
 
