@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>딜러 숏폼 메이커</title>
+  <meta name="description" content="매물 사진 몇 장과 차량 정보로 릴스·쇼츠·틱톡용 중고차 숏폼 영상을 브라우저에서 바로 만드는 딜러용 도구">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1" y="1" width="30" height="30" rx="8" class="mark-bg"/>
+        <rect x="10" y="6" width="12" height="20" rx="2.5" class="mark-phone"/>
+        <path class="mark-play" d="M14.5 12.5v7l5.5-3.5z"/>
+      </svg>
+      <div>
+        <h1>딜러 숏폼 메이커</h1>
+        <p class="tagline">사진 몇 장으로 릴스·쇼츠용 매물 영상을 만들어요 · 사진은 서버로 보내지 않아요</p>
+      </div>
+    </div>
+    <a class="btn btn-quiet" href="../bg-remover/">매물사진 배경지우개</a>
+  </header>
+
+  <main class="layout">
+    <form class="wizard" id="wizard" novalidate>
+      <ol class="stepper" id="stepper" aria-label="진행 단계">
+        <li><button type="button" data-goto="0"><b>1</b><span>사진</span></button></li>
+        <li><button type="button" data-goto="1"><b>2</b><span>차량 정보</span></button></li>
+        <li><button type="button" data-goto="2"><b>3</b><span>스타일·만들기</span></button></li>
+      </ol>
+
+      <!-- 1단계: 사진 -->
+      <section class="step" data-step="0">
+        <div class="step-head">
+          <h2>사진 <span class="num" id="photoCount">0/10</span></h2>
+          <p>3~10장을 올려 주세요. <b>첫 사진이 영상의 첫 장면</b>이 돼요. 끌어서 순서를 바꿀 수 있어요.</p>
+        </div>
+        <ol class="photo-grid" id="photoGrid"></ol>
+        <label class="photo-add" id="photoAdd" for="photoInput">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <span><b>눌러서 사진 추가</b><small>또는 여기에 끌어다 놓기 · JPG·PNG·WEBP</small></span>
+        </label>
+        <input id="photoInput" type="file" accept="image/*" multiple hidden>
+        <p class="hint">추천 순서: 전면 → 측면 → 후면 → 실내 → 계기판 → 엔진룸. 배경을 정리한 사진은 <a href="../bg-remover/">배경지우개</a>에서 만들 수 있어요.</p>
+      </section>
+
+      <!-- 2단계: 차량 정보 -->
+      <section class="step" data-step="1" hidden>
+        <div class="step-head">
+          <h2>차량 정보</h2>
+          <p>영상 자막과 게시글 문구에 그대로 들어가요. <span class="req">*</span> 표시만 채우면 돼요.</p>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="make">제조사 <span class="req">*</span></label>
+            <input type="text" id="make" list="makeList" placeholder="예: 현대" maxlength="20" autocomplete="off">
+            <datalist id="makeList">
+              <option value="현대"><option value="기아"><option value="제네시스"><option value="쉐보레"><option value="르노코리아"><option value="KG모빌리티">
+              <option value="BMW"><option value="벤츠"><option value="아우디"><option value="폭스바겐"><option value="볼보"><option value="포르쉐">
+              <option value="렉서스"><option value="토요타"><option value="혼다"><option value="미니"><option value="테슬라"><option value="랜드로버"><option value="지프"><option value="포드">
+            </datalist>
+          </div>
+          <div class="field">
+            <label for="model">모델 <span class="req">*</span></label>
+            <input type="text" id="model" placeholder="예: 그랜저 IG" maxlength="30" autocomplete="off">
+          </div>
+          <div class="field span-2">
+            <label for="trim">세부 등급 <small>선택</small></label>
+            <input type="text" id="trim" placeholder="예: 3.3 캘리그래피" maxlength="30" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="year">연식 <span class="req">*</span></label>
+            <select id="year"></select>
+          </div>
+          <div class="field">
+            <label for="mileage">주행거리</label>
+            <div class="unit-input"><input type="number" id="mileage" inputmode="numeric" min="0" step="100" placeholder="32000"><span>km</span></div>
+          </div>
+          <div class="field">
+            <label for="price">판매 가격</label>
+            <div class="unit-input"><input type="number" id="price" inputmode="numeric" min="0" step="10" placeholder="2890"><span>만원</span></div>
+            <p class="hint" id="pricePreview"></p>
+          </div>
+          <div class="field">
+            <label for="color">색상 <small>선택</small></label>
+            <input type="text" id="color" placeholder="예: 화이트 펄" maxlength="16" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="fuel">연료</label>
+            <select id="fuel">
+              <option>가솔린</option><option>디젤</option><option>LPG</option><option>하이브리드</option><option>전기</option><option>수소</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="transmission">변속기</label>
+            <select id="transmission"><option>오토</option><option>수동</option></select>
+          </div>
+          <div class="field span-2">
+            <span class="label">차종 <small>배경음악을 고를 때 써요</small></span>
+            <div class="chips" id="bodySeg" role="radiogroup" aria-label="차종">
+              <button type="button" role="radio" data-body="경차">경차</button>
+              <button type="button" role="radio" data-body="세단">세단</button>
+              <button type="button" role="radio" data-body="SUV">SUV</button>
+              <button type="button" role="radio" data-body="RV·승합">RV·승합</button>
+              <button type="button" role="radio" data-body="스포츠카">스포츠카</button>
+              <button type="button" role="radio" data-body="트럭">트럭</button>
+            </div>
+          </div>
+          <div class="field span-2">
+            <label for="highlights">특장점 <small>한 줄에 하나, 최대 6개 · 사진마다 하나씩 크게 나와요</small></label>
+            <div class="chips chips-add" id="quickHighlights" aria-label="자주 쓰는 특장점">
+              <button type="button">무사고</button><button type="button">1인 소유</button><button type="button">비흡연</button>
+              <button type="button">정비이력 완비</button><button type="button">제조사 보증 남음</button><button type="button">저주행</button>
+              <button type="button">풀옵션</button><button type="button">썬루프</button><button type="button">신차급 컨디션</button><button type="button">할부 가능</button>
+            </div>
+            <textarea id="highlights" rows="4" placeholder="무사고&#10;1인 소유&#10;정비이력 완비"></textarea>
+          </div>
+          <div class="field span-2">
+            <label for="plate">차량번호 <small>선택 · 파일 이름에만 쓰고 영상에는 넣지 않아요</small></label>
+            <input type="text" id="plate" placeholder="예: 12가3456" maxlength="12" autocomplete="off">
+          </div>
+        </div>
+      </section>
+
+      <!-- 3단계: 스타일·만들기 -->
+      <section class="step" data-step="2" hidden>
+        <div class="step-head">
+          <h2>스타일·만들기</h2>
+          <p>바꾸는 대로 미리보기에 바로 나와요. ▶를 누르면 음악과 함께 볼 수 있어요.</p>
+        </div>
+
+        <div class="group">
+          <h3>영상 스타일</h3>
+          <div class="style-cards" id="styleCards" role="radiogroup" aria-label="영상 스타일"></div>
+        </div>
+
+        <div class="group">
+          <h3>화면 비율</h3>
+          <div class="segmented segmented-3" id="ratioSeg" role="radiogroup" aria-label="화면 비율">
+            <button type="button" role="radio" data-ratio="9:16">9:16<small>릴스·쇼츠·틱톡</small></button>
+            <button type="button" role="radio" data-ratio="1:1">1:1<small>피드·매물 상세</small></button>
+            <button type="button" role="radio" data-ratio="16:9">16:9<small>유튜브</small></button>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="field">
+            <span class="label">사진 보여주기</span>
+            <div class="segmented segmented-2" id="fitSeg" role="radiogroup" aria-label="사진 보여주기">
+              <button type="button" role="radio" data-fit="smart">전체 보기<small>흐린 배경</small></button>
+              <button type="button" role="radio" data-fit="fill">꽉 채우기<small>훑어 보기</small></button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="label">영상 길이</span>
+            <div class="segmented segmented-3" id="lengthSeg" role="radiogroup" aria-label="영상 길이">
+              <button type="button" role="radio" data-length="auto">자동<small id="autoLen">사진 수</small></button>
+              <button type="button" role="radio" data-length="15">15초</button>
+              <button type="button" role="radio" data-length="30">30초</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <h3>배경음악 <small>저작권 걱정 없이 브라우저에서 직접 만든 음악</small></h3>
+          <div class="grid-2">
+            <div class="field">
+              <label for="music">음악</label>
+              <select id="music">
+                <option value="auto">자동 추천</option>
+                <option value="chill">산뜻한</option>
+                <option value="drive">경쾌한</option>
+                <option value="sport">강렬한</option>
+                <option value="luxury">고급스러운</option>
+                <option value="electric">미래적인</option>
+                <option value="custom">내 음악 파일…</option>
+                <option value="none">음악 없음</option>
+              </select>
+              <p class="hint" id="musicHint"></p>
+              <input type="file" id="audioInput" accept="audio/*" hidden>
+            </div>
+            <div class="field">
+              <label for="volume">음량</label>
+              <div class="range-row"><input type="range" id="volume" min="0" max="100" value="80"><output class="num" for="volume" id="volumeOut">80</output></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <h3>상사 정보 <small>영상 위쪽과 마지막 화면에 들어가요 · 이 브라우저에 기억돼요</small></h3>
+          <div class="grid-2">
+            <div class="field">
+              <label for="dealerName">상사명</label>
+              <input type="text" id="dealerName" placeholder="예: 한빛모터스" maxlength="30" autocomplete="organization">
+            </div>
+            <div class="field">
+              <label for="dealerPhone">연락처</label>
+              <input type="tel" id="dealerPhone" placeholder="예: 010-1234-5678" maxlength="20" inputmode="tel" autocomplete="tel">
+            </div>
+            <div class="field">
+              <span class="label">로고</span>
+              <div class="logo-row">
+                <span class="logo-preview" id="logoPreview">없음</span>
+                <label class="btn btn-quiet btn-sm" for="logoInput">로고 올리기</label>
+                <button class="btn btn-quiet btn-sm" id="logoClear" type="button" hidden>빼기</button>
+                <input type="file" id="logoInput" accept="image/*" hidden>
+              </div>
+            </div>
+            <div class="field">
+              <span class="label">강조 색</span>
+              <div class="color-row">
+                <label class="color-pick"><input type="color" id="brandColor" value="#6366f1"><span id="brandColorText">스타일 기본색</span></label>
+                <button class="btn btn-quiet btn-sm" id="brandColorReset" type="button" hidden>기본색</button>
+              </div>
+            </div>
+            <div class="field span-2">
+              <label for="cta">마무리 문구</label>
+              <input type="text" id="cta" placeholder="예: 지금 바로 문의하세요" maxlength="30">
+            </div>
+          </div>
+          <p class="hint" id="brandImported" hidden>배경지우개에 입력한 상사 정보를 불러왔어요.</p>
+        </div>
+      </section>
+
+      <!-- 녹화 중 -->
+      <section class="step" data-step="render" hidden>
+        <div class="render-box">
+          <div class="spinner"></div>
+          <h2 id="renderTitle">영상을 만드는 중이에요</h2>
+          <div class="bar"><span id="renderBar"></span></div>
+          <p class="num" id="renderText">준비 중</p>
+          <p class="hint">영상 길이만큼 시간이 걸려요. <b>이 탭을 열어 둔 채로</b> 기다려 주세요. 다른 탭으로 가면 잠시 멈췄다가 돌아오면 이어서 녹화해요.</p>
+          <button class="btn btn-quiet" id="cancelRender" type="button">취소</button>
+        </div>
+      </section>
+
+      <!-- 완성 -->
+      <section class="step" data-step="done" hidden>
+        <div class="step-head">
+          <h2>영상이 완성됐어요</h2>
+          <p id="doneMeta"></p>
+        </div>
+        <div class="done-actions">
+          <button class="btn btn-primary btn-lg" id="saveVideo" type="button">영상 저장</button>
+          <button class="btn btn-quiet btn-lg" id="saveThumb" type="button">썸네일 저장</button>
+          <button class="btn btn-quiet btn-lg" id="shareVideo" type="button" hidden>휴대폰으로 공유</button>
+        </div>
+        <p class="hint" id="formatNote"></p>
+        <div class="group">
+          <div class="group-head">
+            <h3>게시글 문구·해시태그 <small>자동 생성 · 고쳐 써도 돼요</small></h3>
+            <button class="btn btn-quiet btn-sm" id="copyCaption" type="button">복사</button>
+          </div>
+          <textarea id="caption" rows="9"></textarea>
+        </div>
+        <div class="group">
+          <h3>다른 비율로도 만들기</h3>
+          <div class="again" id="againRatios">
+            <button class="btn btn-quiet" type="button" data-ratio="9:16">9:16 릴스·쇼츠</button>
+            <button class="btn btn-quiet" type="button" data-ratio="1:1">1:1 피드</button>
+            <button class="btn btn-quiet" type="button" data-ratio="16:9">16:9 유튜브</button>
+          </div>
+        </div>
+        <div class="nav nav-done">
+          <button class="btn btn-quiet" id="editAgain" type="button">← 고쳐서 다시 만들기</button>
+          <button class="btn btn-quiet" id="newVideo" type="button">새 매물 영상 만들기</button>
+        </div>
+      </section>
+
+      <p class="form-error" id="formError" role="alert" hidden></p>
+      <div class="nav" id="nav">
+        <button class="btn btn-quiet btn-lg" id="backBtn" type="button">← 이전</button>
+        <button class="btn btn-primary btn-lg" id="nextBtn" type="submit">다음 →</button>
+      </div>
+    </form>
+
+    <aside class="preview" aria-label="미리보기">
+      <div class="preview-sticky">
+        <div class="phone" id="phone" data-ratio="9:16">
+          <canvas id="previewCanvas" width="540" height="960"></canvas>
+          <video id="resultVideo" playsinline controls hidden></video>
+          <div class="phone-empty" id="phoneEmpty">
+            <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="10" width="36" height="28" rx="4"/><path d="M20 19v10l9-5z"/></svg>
+            <p>사진을 올리면<br>여기서 미리 볼 수 있어요</p>
+          </div>
+        </div>
+        <div class="player" id="player">
+          <button class="icon-btn" id="playBtn" type="button" aria-label="재생">
+            <svg class="i-play" viewBox="0 0 20 20"><path d="M6 4.5v11l9-5.5z"/></svg>
+            <svg class="i-pause" viewBox="0 0 20 20"><path d="M6.5 4.5v11M13.5 4.5v11"/></svg>
+          </button>
+          <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="재생 위치">
+          <span class="num time" id="timeText">0:00 / 0:00</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="safeToggle">
+          <span class="switch-track"></span>
+          <span>앱 버튼이 덮는 곳 표시</span>
+        </label>
+      </div>
+    </aside>
+  </main>
+
+  <dialog class="mask-dialog" id="maskDialog">
+    <form method="dialog" class="mask-inner">
+      <div class="mask-head">
+        <h2>번호판 가리기</h2>
+        <p>번호판 위를 끌어서 네모를 그리면 모자이크 처리돼요. 여러 개 그릴 수 있어요.</p>
+      </div>
+      <div class="mask-stage"><canvas id="maskCanvas"></canvas></div>
+      <div class="mask-actions">
+        <button class="btn btn-quiet" id="maskUndo" type="button">마지막 네모 지우기</button>
+        <button class="btn btn-quiet" id="maskClear" type="button">모두 지우기</button>
+        <button class="btn btn-primary" value="done">완료</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="drag-veil" id="dragVeil" hidden><p>놓으면 사진이 추가돼요</p></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
