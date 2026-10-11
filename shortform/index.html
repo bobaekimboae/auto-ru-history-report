@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>매물 숏폼 스튜디오</title>
+  <meta name="description" content="중고차 딜러가 매물 사진으로 릴스·쇼츠·틱톡용 숏폼 영상을 만드는 도구">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@600;800;900&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Nanum+Myeongjo:wght@700;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#/">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="1" y="1" width="30" height="30" rx="8" class="mark-bg"/>
+          <rect x="11" y="6" width="10" height="20" rx="2.5" class="mark-phone"/>
+          <path d="M14.5 13.2v5.6l4.6-2.8z" class="mark-play"/>
+        </svg>
+        <span>
+          <strong>매물 숏폼 스튜디오</strong>
+          <small>사진으로 만드는 릴스·쇼츠</small>
+        </span>
+      </a>
+      <nav class="nav" aria-label="메뉴">
+        <a href="#/" data-nav="dashboard">
+          <svg viewBox="0 0 20 20"><path d="M3 3h6v6H3zM11 3h6v4h-6zM11 9h6v8h-6zM3 11h6v6H3z"/></svg>대시보드
+        </a>
+        <a href="#/vehicle/new" data-nav="new">
+          <svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>차량 등록
+        </a>
+        <a href="#/settings" data-nav="settings">
+          <svg viewBox="0 0 20 20"><path d="M4 16v-1.5A3.5 3.5 0 0 1 7.5 11h5a3.5 3.5 0 0 1 3.5 3.5V16M10 8.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>상사 설정
+        </a>
+        <a href="../bg-remover/" class="nav-ext">
+          <svg viewBox="0 0 20 20"><path d="M3 15l4-5 3 3 3-4 4 6zM3 4h14v12H3z"/></svg>배경지우개
+        </a>
+      </nav>
+      <div class="sidebar-foot">
+        <p>사진과 영상은 이 컴퓨터 안에서만 처리되고 이 브라우저에 저장돼요.</p>
+      </div>
+    </aside>
+    <main class="main" id="view" tabindex="-1"></main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
