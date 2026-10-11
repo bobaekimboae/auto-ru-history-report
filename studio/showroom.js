@@ -66,7 +66,7 @@ export async function loadCutout(photoBitmap, maskBlob) {
 }
 
 /** 영상 한 장면 크기(W×H)의 쇼룸 사진을 그린다. sign: { name, sub, logo } */
-export function composeShowroom(item, W, H, dark, sign) {
+export function composeShowroom(item, W, H, theme, sign) {
   const out = canvas(W, H);
   const ctx = out.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
@@ -80,7 +80,7 @@ export function composeShowroom(item, W, H, dark, sign) {
   const dx = W / 2 - (b.x + b.w / 2) * scale;
   const dy = floorY - (b.y + b.h) * scale;
   const horizon = Math.max(H * 0.25, floorY - carH * 0.32);
-  drawBrandStudio(ctx, W, H, horizon, dark, sign);
+  drawBrandStudio(ctx, W, H, horizon, theme, sign);
   drawReflection(ctx, item, scale, dx, dy, carH);
   drawShadow(ctx, item, scale, dx, dy, carH, 0.6);
   ctx.drawImage(item.cut, dx, dy, item.w * scale, item.h * scale);
