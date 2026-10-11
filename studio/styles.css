@@ -349,3 +349,30 @@ a { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* 쇼룸 배경 미리보기 칸 */
+#plateSeg { grid-template-columns: repeat(3, 1fr); }
+#plateSeg button { padding-inline: 4px; white-space: nowrap; }
+
+/* 번호판 */
+.pplate { position: absolute; right: 6px; top: 6px; padding: 1px 7px; border-radius: 5px; background: rgb(0 0 0 / 70%); color: #fff; font-size: 11.5px; font-weight: 600; }
+.plate-dlg { width: min(920px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px; border: 0; border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.plate-dlg::backdrop { background: rgb(0 0 0 / 55%); }
+.pd-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.pd-head h2 { margin: 0; font-size: 18px; }
+.pd-stage { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; background: var(--stage, #000); border-radius: 8px; overflow: hidden; touch-action: none; }
+.pd-stage img { display: block; max-width: 100%; max-height: 56vh; user-select: none; -webkit-user-drag: none; }
+.pd-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pd-poly { fill: rgb(223 84 25 / 22%); stroke: #ff3b1f; stroke-width: 3; vector-effect: non-scaling-stroke; cursor: move; }
+.pd-handle { fill: #fff; stroke: #ff3b1f; stroke-width: 3; vector-effect: non-scaling-stroke; cursor: grab; }
+.pd-status { margin: 8px 0 4px; font-weight: 600; text-align: center; }
+.pd-actions { display: flex; justify-content: center; gap: 8px; }
+.pd-strip { display: flex; gap: 6px; margin: 12px 0 6px; padding: 0 0 4px; list-style: none; overflow-x: auto; }
+.pd-strip button { position: relative; padding: 0; border: 2px solid transparent; border-radius: 6px; background: none; cursor: pointer; }
+.pd-strip button[aria-current="true"] { border-color: var(--accent); }
+.pd-strip img { display: block; width: 72px; height: 54px; object-fit: cover; border-radius: 4px; }
+.pd-strip .num { position: absolute; left: 3px; top: 2px; padding: 0 4px; border-radius: 4px; background: rgb(0 0 0 / 65%); color: #fff; font-size: 11px; }
+.pd-strip button[data-has="1"]::after { content: ''; position: absolute; right: 4px; top: 4px; width: 9px; height: 9px; border-radius: 50%; background: #ff3b1f; box-shadow: 0 0 0 2px #fff; }
+.pd-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+@media (max-width: 560px) { .pd-stage img { max-height: 44vh; } }
+.bg-thumb { width: 45px; height: 34px; }

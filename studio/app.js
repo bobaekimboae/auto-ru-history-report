@@ -3,6 +3,9 @@ import { db } from './db.js';
 import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards, usedPhotoIndices, slidePlan, renderSlides } from './render.js';
 import { playMusic, playBuffer, MUSIC_TRACKS } from './music.js';
 import { makeMask, loadCutout, composeShowroom, looksLikeInterior } from './showroom.js';
+import { detectPlate, applyPlate, dealerPlateCanvas, PLATE_MODES } from './plate.js';
+import { openPlateEditor } from './plate-ui.js';
+import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
 import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -11,8 +14,17 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천', signSub: '' };
-const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0 };
-const BACKGROUNDS = { orig: { label: '원본 사진', hint: '찍은 사진 그대로' }, 'brand-light': { label: '상사 쇼룸', hint: '배경을 지우고 흰 쇼룸에 간판' }, 'brand-dark': { label: '상사 쇼룸 블랙', hint: '배경을 지우고 블랙 쇼룸에 간판' } };
+const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0, plate: 'off' };
+const BACKGROUNDS = {
+  orig: { label: '원본 사진', hint: '찍은 사진 그대로' },
+  'brand-light': { label: '화이트 쇼룸', hint: '밝고 깨끗한 기본', theme: 'light' },
+  'brand-dark': { label: '블랙 쇼룸', hint: '고급차·야간 느낌', theme: 'dark' },
+  'brand-concrete': { label: '콘크리트 갤러리', hint: '노출 콘크리트 전시장', theme: 'concrete' },
+  'brand-wood': { label: '우드 라운지', hint: '따뜻한 원목 벽', theme: 'wood' },
+  'brand-garage': { label: '모던 차고', hint: '금속 패널·차가운 조명', theme: 'garage' },
+  'brand-color': { label: '상사 컬러 월', hint: '상사 대표 색으로 칠한 벽', theme: 'brand' },
+};
+const themeOf = (bg) => (BACKGROUNDS[bg]?.theme === 'brand' ? brandTheme(dealer.color) : STUDIO_THEMES[BACKGROUNDS[bg]?.theme] || STUDIO_THEMES.light);
 const MAKERS = ['현대', '기아', '제네시스', '쉐보레', '르노코리아', 'KG모빌리티', 'BMW', '벤츠', '아우디', '폭스바겐', '볼보', '포르쉐', '렉서스', '토요타', '혼다', '테슬라', '미니', '랜드로버', '지프', '포드'];
 
 let dealer = { ...DEALER_DEFAULTS };
@@ -333,11 +345,13 @@ async function renderEditor(id) {
         <span class="pnum num">${i + 1}</span>
         ${i === 0 ? '<span class="pcover">대표</span>' : ''}
         ${p.keepBg ? '<span class="pkeep">실내 · 배경 유지</span>' : ''}
+        ${p.plate ? '<span class="pplate">번호판 표시됨</span>' : ''}
         <div class="ptools">
           <button type="button" data-act="left" aria-label="앞으로" ${i === 0 ? 'disabled' : ''}>◀</button>
           ${i ? '<button type="button" data-act="cover">대표로</button>' : ''}
           <button type="button" data-act="right" aria-label="뒤로" ${i === photos.length - 1 ? 'disabled' : ''}>▶</button>
           <button type="button" data-act="keep" aria-pressed="${!!p.keepBg}" title="상사 쇼룸 배경을 쓸 때 이 사진은 배경을 지우지 않아요">실내</button>
+          <button type="button" data-act="plate" title="번호판 위치를 맞춰요">번호판</button>
           <button type="button" data-act="del" aria-label="삭제">삭제</button>
         </div>
       </li>`).join('');
@@ -368,6 +382,18 @@ async function renderEditor(id) {
     if (b.dataset.act === 'cover') move(i, 0);
     if (b.dataset.act === 'del') photos.splice(i, 1);
     if (b.dataset.act === 'keep') photos[i] = { ...photos[i], keepBg: !photos[i].keepBg };
+    if (b.dataset.act === 'plate') {
+      const p = photos[i];
+      const open = () => openPlateEditor({ photos, urls: photos.map((x) => photoUrl(x)), start: i, onDone: () => drawPhotos() });
+      if (p.plate !== undefined) { open(); return; }
+      // 처음 여는 사진은 AI로 먼저 찾아 둔다
+      b.disabled = true; b.textContent = '찾는 중…';
+      detectPlate(p.blob, { onProgress: (r) => { b.textContent = `AI ${Math.round(r * 100)}%`; } })
+        .then((q) => { p.plate = q; p.plateAuto = true; })
+        .catch(() => { p.plate = null; toast('번호판을 자동으로 찾지 못했어요. 직접 넣어 주세요.'); })
+        .finally(() => { drawPhotos(); open(); });
+      return;
+    }
     drawPhotos();
   });
   let dragFrom = -1;
@@ -414,6 +440,7 @@ async function renderStudio(id) {
   if (!v.photos?.length) { toast('사진을 먼저 올려 주세요.'); location.hash = `#/vehicle/${id}`; return; }
   const st = { ...STUDIO_DEFAULTS, cta: dealer.cta, ...(v.studio || {}) };
   if (v.studio && v.studio.music === false && !v.studio.musicTrack) st.musicTrack = 'none';
+  if (!BACKGROUNDS[st.bg]) st.bg = 'orig';
   // 직접 올린 음악은 차량에 저장해 두고, 열 때 한 번 풀어 둔다
   let customBuffer = null;
   if (v.customMusic?.blob) {
@@ -475,9 +502,17 @@ async function renderStudio(id) {
           <h3>배경</h3>
           <div class="opts" id="bgOpts">${Object.entries(BACKGROUNDS).map(([k, b]) => `
             <button type="button" class="opt" data-bg="${k}" aria-pressed="${k === st.bg}">
-              <span class="tpl-swatch bgsw-${k}"></span><span><strong>${b.label}</strong><small>${b.hint}</small></span>
+              ${b.theme ? `<canvas class="tpl-swatch bg-thumb" data-theme-bg="${k}" width="96" height="72"></canvas>` : `<span class="tpl-swatch bgsw-${k}"></span>`}<span><strong>${b.label}</strong><small>${b.hint}</small></span>
             </button>`).join('')}</div>
           <p class="hint" id="bgHint">${st.bg === 'orig' ? '' : '처음 한 번은 AI가 사진마다 배경을 지워요. 결과는 저장돼서 다음부터는 바로 나와요.'}</p>
+        </div>
+        <div class="group">
+          <h3>번호판 가리기</h3>
+          <div class="seg seg-wide" id="plateSeg">
+            ${Object.entries(PLATE_MODES).map(([k, m]) => `<button type="button" data-plate="${k}" aria-selected="${k === st.plate}">${m.label}</button>`).join('')}
+          </div>
+          <p class="hint" id="plateHint"></p>
+          <button type="button" class="btn btn-quiet btn-sm" id="plateEditBtn" hidden>번호판 위치 확인·수정</button>
         </div>
         <div class="group" id="durGroup">
           <h3>길이</h3>
@@ -570,20 +605,64 @@ async function renderStudio(id) {
       $('veil').hidden = true;
     }
   };
+  // 번호판 가리기: 영상에 나오는 사진에서 처음 한 번 번호판을 찾아 저장한다
+  const ensurePlates = async () => {
+    if (st.plate === 'off') return;
+    const used = new Set(usedPhotoIndices(st.template, effD(), v.photos.length));
+    const todo = v.photos.map((p, i) => [p, i]).filter(([p, i]) => used.has(i) && p.plate === undefined && !p.keepBg);
+    if (!todo.length) return;
+    try {
+      for (let k = 0; k < todo.length; k++) {
+        const [p] = todo[k];
+        veilShow(`번호판 찾는 중 ${k + 1} / ${todo.length}`, k / todo.length);
+        p.plate = await detectPlate(p.blob, { onProgress: (r) => veilShow(`번호판 AI 준비 중 ${Math.round(r * 100)}% (처음 한 번만 내려받아요)`, r) });
+        p.plateAuto = true;
+      }
+      await db.putVehicle({ ...v, studio: { ...st } });
+    } finally {
+      $('veil').hidden = true;
+    }
+  };
+  let plateArt = null;
+  const plateKey = (p) => (st.plate !== 'off' && p.plate ? `${st.plate}:${p.plate.map((c) => c.map((n) => n.toFixed(4)).join(',')).join(';')}` : '');
+  const based = new Map();
+  const baseOf = (p, i) => {
+    const pk = plateKey(p);
+    if (!pk) return images[i];
+    const key = `${p.id}|${pk}`;
+    if (!based.has(key)) {
+      if (st.plate === 'dealer' && !plateArt) plateArt = dealerPlateCanvas(dealer);
+      based.set(key, applyPlate(images[i], p.plate, st.plate, dealer, plateArt));
+    }
+    return based.get(key);
+  };
+  const syncPlateUI = () => {
+    const found = v.photos.filter((p) => p.plate).length;
+    const checked = v.photos.filter((p) => p.plate !== undefined).length;
+    $('plateEditBtn').hidden = st.plate === 'off';
+    $('plateHint').textContent = st.plate === 'off' ? '번호판을 상사 번호판이나 모자이크로 덮어요. AI가 사진마다 위치를 찾아요.'
+      : `${checked}장 중 ${found}장에서 번호판을 찾았어요. 틀린 곳은 "위치 확인·수정"에서 고치세요.${st.plate === 'dealer' && !dealer.name ? ' 상사 설정에 상사명을 넣으면 번호판에 들어가요.' : ''}`;
+  };
   const prepareImages = async () => {
-    if (st.bg === 'orig') { sceneImages = images; studioSet = new Set(); return; }
+    // 쇼룸 배경이면 배경 지우기를 먼저 해서 실내 사진을 가려낸 뒤 번호판을 찾는다
+    if (st.bg !== 'orig') await ensureMasks();
+    await ensurePlates();
+    syncPlateUI();
+    if (st.bg === 'orig') { sceneImages = v.photos.map((p, i) => baseOf(p, i)); studioSet = new Set(); return; }
     await ensureMasks();
-    const dark = st.bg === 'brand-dark';
+    const theme = themeOf(st.bg);
     const { w, h } = FORMATS[st.format];
     const sign = { name: dealer.name, sub: dealer.signSub, logo };
     const set = new Set();
     sceneImages = await Promise.all(v.photos.map(async (p, i) => {
-      if (p.keepBg || !p.maskBlob) return images[i];
+      if (p.keepBg || !p.maskBlob) return baseOf(p, i);
       set.add(i);
-      const key = `${p.id}|${st.bg}|${st.format}`;
+      const pk = plateKey(p);
+      const key = `${p.id}|${st.bg}|${st.format}|${pk}|${dealer.color}`;
       if (!composites.has(key)) {
-        if (!cutouts.has(p.id)) cutouts.set(p.id, await loadCutout(images[i], p.maskBlob));
-        composites.set(key, composeShowroom(cutouts.get(p.id), w, h, dark, sign));
+        const ck = `${p.id}|${pk}`;
+        if (!cutouts.has(ck)) cutouts.set(ck, await loadCutout(baseOf(p, i), p.maskBlob));
+        composites.set(key, composeShowroom(cutouts.get(ck), w, h, theme, sign));
       }
       return composites.get(key);
     }));
@@ -703,6 +782,20 @@ async function renderStudio(id) {
   pick('tplOpts', 'template', 'template');
   $('tplOpts').addEventListener('click', () => drawMusicList());
   pick('bgOpts', 'bg', 'bg');
+  pick('plateSeg', 'plate', 'plate');
+  $('plateEditBtn').addEventListener('click', () => {
+    const urls = v.photos.map((p) => photoUrl(p));
+    const indices = v.photos.map((p, i) => i).filter((i) => !v.photos[i].keepBg);
+    openPlateEditor({ photos: v.photos, urls, indices, start: indices.find((i) => v.photos[i].plate) ?? indices[0],
+      onDone: async (changed) => { if (changed) { await db.putVehicle({ ...v, studio: { ...st } }); build(); } } });
+  });
+  // 쇼룸 배경 고르기 칸에 실제 배경을 작게 그려 보여준다
+  document.querySelectorAll('[data-theme-bg]').forEach((c) => {
+    const x = c.getContext('2d');
+    x.save(); x.scale(c.width / 480, c.height / 360);
+    drawBrandStudio(x, 480, 360, 360 * 0.62, themeOf(c.dataset.themeBg), { name: dealer.name || 'SHOWROOM' });
+    x.restore();
+  });
   pick('durSeg', 'd', 'duration', Number);
   pick('outSeg', 'out', 'output');
   $('showPrice').addEventListener('change', (e) => { st.showPrice = e.target.checked; save(); build(); });

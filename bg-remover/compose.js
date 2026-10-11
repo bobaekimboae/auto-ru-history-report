@@ -100,27 +100,114 @@ export function vgrad(ctx, y0, y1, stops) {
   return g;
 }
 
-export function drawBrandStudio(ctx, W, H, horizon, dark, sign) {
-  const c = dark
-    ? { wall: ['#202328', '#131417'], slat: 'rgba(255,255,255,0.035)', slatShade: 'rgba(0,0,0,0.22)', floor: ['#2b2e33', '#0a0b0d'],
-        led: '#ffffff', ledGlow: 'rgba(255,255,255,0.55)', cove: 'rgba(255,244,228,0.55)', sheen: 'rgba(255,255,255,0.10)' }
-    : { wall: ['#f6f7f8', '#e6e8eb'], slat: 'rgba(255,255,255,0.7)', slatShade: 'rgba(30,36,44,0.05)', floor: ['#d9dce0', '#f4f5f6'],
-        led: '#ffffff', ledGlow: 'rgba(255,255,255,0.9)', cove: 'rgba(255,255,255,0.95)', sheen: 'rgba(255,255,255,0.45)' };
+// 쇼룸 배경 종류. signDark: 간판을 어두운 벽용(빛나는 흰 글자)으로 그릴지
+export const STUDIO_THEMES = {
+  light: { label: '화이트 쇼룸', wall: ['#f6f7f8', '#e6e8eb'], slat: 'rgba(255,255,255,0.7)', slatShade: 'rgba(30,36,44,0.05)', floor: ['#d9dce0', '#f4f5f6'],
+    led: '#ffffff', ledGlow: 'rgba(255,255,255,0.9)', cove: 'rgba(255,255,255,0.95)', sheen: 'rgba(255,255,255,0.45)', vignette: 'rgba(40,46,54,0.10)', wallStyle: 'slat', signDark: false },
+  dark: { label: '블랙 쇼룸', wall: ['#202328', '#131417'], slat: 'rgba(255,255,255,0.035)', slatShade: 'rgba(0,0,0,0.22)', floor: ['#2b2e33', '#0a0b0d'],
+    led: '#ffffff', ledGlow: 'rgba(255,255,255,0.55)', cove: 'rgba(255,244,228,0.55)', sheen: 'rgba(255,255,255,0.10)', vignette: 'rgba(0,0,0,0.45)', wallStyle: 'slat', signDark: true },
+  concrete: { label: '콘크리트 갤러리', wall: ['#c3c5c6', '#a9acae'], floor: ['#9a9da0', '#d0d2d4'],
+    led: '#ffffff', ledGlow: 'rgba(255,255,255,0.8)', cove: 'rgba(255,255,255,0.7)', sheen: 'rgba(255,255,255,0.35)', vignette: 'rgba(30,34,38,0.28)', wallStyle: 'concrete', signDark: false },
+  wood: { label: '우드 라운지', wall: ['#7a573c', '#4d3424'], floor: ['#3a3c40', '#16171a'],
+    led: '#fff4e2', ledGlow: 'rgba(255,214,160,0.7)', cove: 'rgba(255,206,150,0.75)', sheen: 'rgba(255,230,200,0.12)', vignette: 'rgba(0,0,0,0.42)', wallStyle: 'wood', signDark: true },
+  garage: { label: '모던 차고', wall: ['#3c4148', '#262a2f'], floor: ['#5b5f64', '#2a2c30'],
+    led: '#e9f3ff', ledGlow: 'rgba(200,225,255,0.8)', cove: 'rgba(200,225,255,0.5)', sheen: 'rgba(255,255,255,0.14)', vignette: 'rgba(0,0,0,0.38)', wallStyle: 'panel', signDark: true },
+};
 
-  // 벽과 세로 슬랫 패널
+const hexRgb = (hex) => { const n = parseInt(String(hex).replace('#', '').padEnd(6, '0').slice(0, 6), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const rgb = (c, k = 1) => `rgb(${c.map((v) => Math.round(Math.max(0, Math.min(255, v * k)))).join(',')})`;
+
+/** 상사 대표 색으로 칠한 벽 */
+export function brandTheme(hex) {
+  const c = hexRgb(hex || '#df5419');
+  const lum = (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+  return { label: '상사 컬러 월', wall: [rgb(c, 1.05), rgb(c, 0.78)], slat: 'rgba(255,255,255,0.06)', slatShade: 'rgba(0,0,0,0.12)',
+    floor: lum > 0.6 ? ['#cfd2d6', '#eef0f2'] : ['#2f3236', '#0e0f11'], led: '#ffffff', ledGlow: 'rgba(255,255,255,0.7)', cove: 'rgba(255,255,255,0.6)',
+    sheen: lum > 0.6 ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.1)', vignette: 'rgba(0,0,0,0.3)', wallStyle: 'slat', signDark: lum < 0.6 };
+}
+
+export function resolveTheme(t) {
+  if (t === true) return STUDIO_THEMES.dark;
+  if (!t) return STUDIO_THEMES.light;
+  if (typeof t === 'string') return STUDIO_THEMES[t] || STUDIO_THEMES.light;
+  return t;
+}
+
+// 같은 사진을 여러 번 그려도 무늬가 똑같도록 고정된 난수를 쓴다
+function seeded(seed) {
+  let s = seed >>> 0;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+}
+
+function drawWall(ctx, W, H, horizon, c) {
   ctx.fillStyle = vgrad(ctx, 0, horizon, c.wall);
   ctx.fillRect(0, 0, W, horizon);
-  const slatW = W / 44;
-  for (let x = 0; x < W; x += slatW) {
-    ctx.fillStyle = c.slatShade;
-    ctx.fillRect(Math.round(x), 0, Math.max(1, slatW * 0.08), horizon);
-    ctx.fillStyle = c.slat;
-    ctx.fillRect(Math.round(x + slatW * 0.08), 0, 1, horizon);
+  const rnd = seeded(7);
+  if (c.wallStyle === 'slat') {
+    const slatW = W / 44;
+    for (let x = 0; x < W; x += slatW) {
+      ctx.fillStyle = c.slatShade;
+      ctx.fillRect(Math.round(x), 0, Math.max(1, slatW * 0.08), horizon);
+      ctx.fillStyle = c.slat;
+      ctx.fillRect(Math.round(x + slatW * 0.08), 0, 1, horizon);
+    }
+  } else if (c.wallStyle === 'concrete') {
+    // 노출 콘크리트: 얼룩 + 거푸집 이음선 + 폼타이 구멍
+    for (let i = 0; i < 160; i++) {
+      const x = rnd() * W, y = rnd() * horizon, r = (0.03 + rnd() * 0.12) * W;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      const a = 0.025 + rnd() * 0.04;
+      g.addColorStop(0, rnd() > 0.5 ? `rgba(255,255,255,${a})` : `rgba(40,40,40,${a})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    const pw = W / 4, ph = Math.max(horizon / 3, pw / 2);
+    ctx.fillStyle = 'rgba(60,62,64,0.18)';
+    for (let x = pw; x < W; x += pw) ctx.fillRect(Math.round(x), 0, Math.max(1, W * 0.0015), horizon);
+    for (let y = horizon - ph; y > 0; y -= ph) ctx.fillRect(0, Math.round(y), W, Math.max(1, W * 0.0015));
+    const hr = Math.max(1.5, W * 0.004);
+    for (let x = pw / 4; x < W; x += pw / 2) {
+      for (let y = horizon - ph * 0.25; y > 0; y -= ph / 2) {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, hr);
+        g.addColorStop(0, 'rgba(50,52,54,0.55)'); g.addColorStop(1, 'rgba(50,52,54,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, hr, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  } else if (c.wallStyle === 'wood') {
+    // 세로 원목 루버: 판마다 색을 조금씩 달리하고 결을 그린다
+    const pw = W / 26;
+    for (let x = 0, i = 0; x < W; x += pw, i++) {
+      const k = 0.85 + rnd() * 0.3;
+      ctx.fillStyle = `rgba(${k > 1 ? 255 : 0},${k > 1 ? 220 : 0},${k > 1 ? 180 : 0},${Math.abs(k - 1) * 0.35})`;
+      ctx.fillRect(x, 0, pw, horizon);
+      ctx.strokeStyle = 'rgba(30,18,10,0.12)'; ctx.lineWidth = Math.max(0.5, W * 0.0008);
+      for (let j = 0; j < 4; j++) {
+        const gx = x + pw * (0.15 + rnd() * 0.7);
+        ctx.beginPath(); ctx.moveTo(gx, 0);
+        ctx.bezierCurveTo(gx + pw * 0.1, horizon * 0.3, gx - pw * 0.1, horizon * 0.7, gx + pw * 0.05, horizon);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(Math.round(x), 0, Math.max(1, pw * 0.12), horizon);
+    }
+  } else if (c.wallStyle === 'panel') {
+    // 금속 패널 벽 + 가로 줄 조명
+    const ph = horizon / 5;
+    for (let y = ph; y < horizon; y += ph) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0, Math.round(y), W, Math.max(1, H * 0.002));
+      ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(0, Math.round(y) + Math.max(1, H * 0.002), W, 1);
+    }
+    for (let x = W / 6; x < W; x += W / 6) { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(Math.round(x), 0, Math.max(1, W * 0.0015), horizon); }
   }
+}
+
+export function drawBrandStudio(ctx, W, H, horizon, theme, sign) {
+  const c = resolveTheme(theme);
+  drawWall(ctx, W, H, horizon, c);
   // 벽 가장자리를 어둡게 해 가운데로 시선을 모은다
   const vig = ctx.createRadialGradient(W / 2, horizon * 0.55, W * 0.15, W / 2, horizon * 0.55, W * 0.75);
   vig.addColorStop(0, 'rgba(0,0,0,0)');
-  vig.addColorStop(1, dark ? 'rgba(0,0,0,0.45)' : 'rgba(40,46,54,0.10)');
+  vig.addColorStop(1, c.vignette);
   ctx.fillStyle = vig;
   ctx.fillRect(0, 0, W, horizon);
 
@@ -156,7 +243,7 @@ export function drawBrandStudio(ctx, W, H, horizon, dark, sign) {
   ctx.fillRect(0, horizon - Math.max(1, H * 0.003), W, Math.max(1.5, H * 0.003));
   ctx.restore();
 
-  drawSign(ctx, W, H, Math.min(horizon - H * 0.05, H * (SIGN_ZONE - 0.025)), dark, sign);
+  drawSign(ctx, W, H, Math.min(horizon - H * 0.05, H * (SIGN_ZONE - 0.025)), c.signDark, sign);
 }
 
 // sign: { name, sub, logo } 상사명·간판 아래 문구·로고 이미지
