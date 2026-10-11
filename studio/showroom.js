@@ -37,6 +37,19 @@ export async function makeMask(blob, w, h, { onProgress } = {}) {
   return new Promise((r) => m.toBlob(r, 'image/png'));
 }
 
+/** 실내·계기판·기어봉 같은 근접 사진은 쇼룸에 세우지 않는다.
+ *  잘라낸 모양이 사진 가장자리 두 곳 이상에 닿거나, 차처럼 옆으로 넓지 않거나(가로÷세로 1.12 미만), 너무 작으면 실내로 본다. */
+export async function looksLikeInterior(maskBlob) {
+  const bmp = await createImageBitmap(maskBlob);
+  const m = canvas(bmp.width, bmp.height);
+  m.getContext('2d').drawImage(bmp, 0, 0);
+  bmp.close();
+  const b = findBBox(m);
+  const W = m.width, H = m.height, tol = 0.015;
+  const edges = [b.x <= W * tol, b.y <= H * tol, b.x + b.w >= W * (1 - tol), b.y + b.h >= H * (1 - tol)].filter(Boolean).length;
+  return edges >= 2 || b.w / b.h < 1.12 || b.w < W * 0.4;
+}
+
 /** 저장된 마스크 PNG와 원본으로 잘라낸 차량 객체를 만든다. */
 export async function loadCutout(photoBitmap, maskBlob) {
   const w = photoBitmap.width, h = photoBitmap.height;

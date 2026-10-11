@@ -75,6 +75,25 @@ function makeBlurred(img, W, H) {
   return c;
 }
 
+// 템플릿·길이·사진 수로 장면 길이와 사진 컷 수를 정한다.
+function timeline(template, D, nImages) {
+  const introD = template === 'dynamic' ? 1.8 : 2.4;
+  const outroD = template === 'luxury' ? 3.4 : 3.0;
+  const shotsSpan = Math.max(1, D - introD - outroD);
+  const poolLen = nImages > 1 ? nImages - 1 : 1;
+  const perShot = template === 'dynamic' ? 1.15 : template === 'luxury' ? 2.2 : 1.6;
+  const count = Math.max(1, Math.min(Math.round(shotsSpan / perShot), Math.max(poolLen, Math.ceil(shotsSpan / 3))));
+  return { introD, outroD, shotD: shotsSpan / count, count };
+}
+
+/** 영상에 실제로 나오는 사진 번호들(대표 사진 포함). 배경 지우기를 이 사진들에만 하려고 쓴다. */
+export function usedPhotoIndices(template, duration, nImages) {
+  const { count } = timeline(template, duration, nImages);
+  const used = new Set([0]);
+  for (let i = 0; i < count; i++) used.add(nImages > 1 ? 1 + (i % (nImages - 1)) : 0);
+  return [...used].sort((a, b) => a - b);
+}
+
 /**
  * 장면 객체를 만든다. draw(ctx, t)로 t초 시점의 프레임을 그린다.
  * opts: { vehicle, images:[ImageBitmap], dealer:{name,phone,color,cta}, logo, template, format, duration, showPrice }
@@ -103,13 +122,8 @@ export function createScene(opts) {
     badge: !studio.size,
   };
 
-  const introD = template === 'dynamic' ? 1.8 : 2.4;
-  const outroD = template === 'luxury' ? 3.4 : 3.0;
-  const shotsSpan = Math.max(1, D - introD - outroD);
+  const { introD, outroD, shotD, count } = timeline(template, D, images.length);
   const pool = images.length > 1 ? images.slice(1) : images;
-  const perShot = template === 'dynamic' ? 1.15 : template === 'luxury' ? 2.2 : 1.6;
-  const count = Math.max(1, Math.min(Math.round(shotsSpan / perShot), Math.max(pool.length, Math.ceil(shotsSpan / 3))));
-  const shotD = shotsSpan / count;
   const fade = template === 'dynamic' ? 0.22 : template === 'luxury' ? 0.8 : 0.45;
   const shots = Array.from({ length: count }, (_, i) => {
     const imgIdx = images.length > 1 ? 1 + (i % pool.length) : 0;
