@@ -376,3 +376,11 @@ a { color: inherit; }
 .pd-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
 @media (max-width: 560px) { .pd-stage img { max-height: 44vh; } }
 .bg-thumb { width: 45px; height: 34px; }
+#outSeg { grid-template-columns: repeat(3, 1fr); }
+.stage { touch-action: pan-y; }
+.spin-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.spin-pick button { position: relative; padding: 0; border: 2px solid var(--accent); border-radius: 6px; background: none; cursor: pointer; }
+.spin-pick button[aria-pressed="false"] { border-color: var(--line); opacity: 0.45; }
+.spin-pick button[aria-pressed="false"]::after { content: '빠짐'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; background: rgb(0 0 0 / 45%); border-radius: 4px; }
+.spin-pick img { display: block; width: 56px; height: 42px; object-fit: cover; border-radius: 4px; }
+.spin-pick .num { position: absolute; left: 2px; top: 1px; padding: 0 3px; border-radius: 3px; background: rgb(0 0 0 / 65%); color: #fff; font-size: 10px; }

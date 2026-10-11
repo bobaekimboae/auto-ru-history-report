@@ -6,6 +6,7 @@ import { makeMask, loadCutout, composeShowroom, looksLikeInterior } from './show
 import { detectPlate, applyPlate, dealerPlateCanvas, PLATE_MODES } from './plate.js';
 import { openPlateEditor } from './plate-ui.js';
 import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
+import { createTurntableScene, isSpinPhoto } from './turntable.js';
 import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -479,10 +480,12 @@ async function renderStudio(id) {
         <div class="group">
           <h3>만들 것</h3>
           <div class="seg seg-wide" id="outSeg">
-            <button type="button" data-out="video" aria-selected="${st.output !== 'slides'}">영상 (MP4)</button>
+            <button type="button" data-out="video" aria-selected="${st.output === 'video'}">영상 (MP4)</button>
+            <button type="button" data-out="turntable" aria-selected="${st.output === 'turntable'}">턴테이블</button>
             <button type="button" data-out="slides" aria-selected="${st.output === 'slides'}">사진 슬라이드</button>
           </div>
           <p class="hint" id="outHint"></p>
+          <div class="spin-pick" id="spinPick" hidden></div>
         </div>
         <div class="group">
           <h3>형식</h3>
@@ -491,7 +494,7 @@ async function renderStudio(id) {
               <span class="ratio r${k.replace(':', '-')}"></span><span><strong>${f.label}</strong><small>${f.hint}</small></span>
             </button>`).join('')}</div>
         </div>
-        <div class="group">
+        <div class="group" id="tplGroup">
           <h3>템플릿</h3>
           <div class="opts opts-tpl" id="tplOpts">${Object.entries(TEMPLATES).map(([k, t]) => `
             <button type="button" class="opt tpl tpl-${k}" data-template="${k}" aria-pressed="${k === st.template}">
@@ -568,15 +571,26 @@ async function renderStudio(id) {
   // 사진 슬라이드는 사진을 모두 한 번씩 보여주는 길이로 미리보기·배경 지우기를 한다
   const slides = () => slidePlan(st.template, v.photos.length);
   const effD = () => (st.output === 'slides' ? slides().duration : st.duration);
+  // 턴테이블은 배경을 지운 차가 있어야 해서 "원본 사진"을 골라도 화이트 쇼룸으로 만든다
+  const bgNow = () => (st.output === 'turntable' && st.bg === 'orig' ? 'brand-light' : st.bg);
+  const MAX_SPIN = 12;
   const syncOutputUI = () => {
     const isSlides = st.output === 'slides';
+    const isSpin = st.output === 'turntable';
     $('durGroup').hidden = isSlides;
     $('musicGroup').hidden = isSlides;
-    $('renderBtn').textContent = isSlides ? `사진 슬라이드 만들기 (${slides().times.length}장)` : '영상 만들기';
+    $('tplGroup').hidden = isSpin;
+    // 턴테이블에 쓸 사진 고르기(계기판처럼 잘못 들어간 사진을 뺀다)
+    $('spinPick').hidden = !isSpin;
+    if (isSpin) {
+      $('spinPick').innerHTML = v.photos.map((p, i) => (isSpinPhoto(p) ? `<button type="button" data-spin="${i}" aria-pressed="${!p.noSpin}" title="눌러서 턴테이블에서 빼거나 넣기"><img src="${photoUrl(p)}" alt="사진 ${i + 1}"><span class="num">${i + 1}</span></button>` : '')).join('');
+    }
+    $('renderBtn').textContent = isSlides ? `사진 슬라이드 만들기 (${slides().times.length}장)` : isSpin ? '턴테이블 영상 만들기' : '영상 만들기';
     $('renderHint').textContent = isSlides
       ? '표지·사진마다 한 장·마무리 한 장으로 만들어요. 틱톡 사진 게시물은 최대 35장이고 음악은 틱톡에서 고르면 돼요.'
       : '만드는 동안 영상 길이만큼 시간이 걸려요. 이 탭을 그대로 두세요.';
-    $('outHint').textContent = isSlides ? '넘겨 보는 사진 게시물(틱톡 사진 모드·인스타 캐러셀)용 이미지를 만들어요.' : '';
+    $('outHint').textContent = isSlides ? '넘겨 보는 사진 게시물(틱톡 사진 모드·인스타 캐러셀)용 이미지를 만들어요.'
+      : isSpin ? `쇼룸 회전 무대 위에서 차가 돌아가는 영상이에요. 외관 사진 ${spinCount}장을 사진 순서대로 돌려요(앞 → 사선 → 옆 → 뒤 순서로 놓으면 자연스러워요). 미리보기를 손으로 끌면 360°로 돌려볼 수 있어요.` : '';
   };
 
   // 상사 쇼룸 배경: 사진마다 배경을 지운 마스크를 만들어 저장하고, 영상 비율에 맞는 쇼룸 사진으로 합성한다
@@ -585,9 +599,13 @@ async function renderStudio(id) {
   const cutouts = new Map();
   const composites = new Map();
   const veilShow = (text, ratio) => { $('veil').hidden = false; $('veilText').textContent = text; $('veilBar').style.width = `${Math.round((ratio || 0) * 100)}%`; };
+  // 영상에 나오는 사진. 턴테이블은 외관 사진을 모두 쓴다
+  const usedSet = () => new Set(st.output === 'turntable' ? v.photos.map((_, i) => i).slice(0, MAX_SPIN * 2) : usedPhotoIndices(st.template, effD(), v.photos.length));
+  let spinCount = 0;
+  let spinItems = [];
   const ensureMasks = async () => {
     // 영상에 나오는 사진만 배경을 지운다(사진이 많은 매물도 빨리 끝나게)
-    const used = new Set(usedPhotoIndices(st.template, effD(), v.photos.length));
+    const used = usedSet();
     const todo = v.photos.map((p, i) => [p, i]).filter(([p, i]) => used.has(i) && !p.keepBg && !p.maskBlob);
     if (!todo.length) return;
     try {
@@ -608,7 +626,7 @@ async function renderStudio(id) {
   // 번호판 가리기: 영상에 나오는 사진에서 처음 한 번 번호판을 찾아 저장한다
   const ensurePlates = async () => {
     if (st.plate === 'off') return;
-    const used = new Set(usedPhotoIndices(st.template, effD(), v.photos.length));
+    const used = usedSet();
     const todo = v.photos.map((p, i) => [p, i]).filter(([p, i]) => used.has(i) && p.plate === undefined && !p.keepBg);
     if (!todo.length) return;
     try {
@@ -645,12 +663,22 @@ async function renderStudio(id) {
   };
   const prepareImages = async () => {
     // 쇼룸 배경이면 배경 지우기를 먼저 해서 실내 사진을 가려낸 뒤 번호판을 찾는다
-    if (st.bg !== 'orig') await ensureMasks();
+    if (bgNow() !== 'orig') await ensureMasks();
     await ensurePlates();
     syncPlateUI();
-    if (st.bg === 'orig') { sceneImages = v.photos.map((p, i) => baseOf(p, i)); studioSet = new Set(); return; }
-    await ensureMasks();
-    const theme = themeOf(st.bg);
+    if (bgNow() === 'orig') { sceneImages = v.photos.map((p, i) => baseOf(p, i)); studioSet = new Set(); return; }
+    const theme = themeOf(bgNow());
+    if (st.output === 'turntable') {
+      const idx = v.photos.map((p, i) => i).filter((i) => isSpinPhoto(v.photos[i]) && !v.photos[i].noSpin).slice(0, MAX_SPIN);
+      spinItems = await Promise.all(idx.map(async (i) => {
+        const p = v.photos[i];
+        const ck = `${p.id}|${plateKey(p)}`;
+        if (!cutouts.has(ck)) cutouts.set(ck, await loadCutout(baseOf(p, i), p.maskBlob));
+        return cutouts.get(ck);
+      }));
+      spinCount = spinItems.length;
+      return;
+    }
     const { w, h } = FORMATS[st.format];
     const sign = { name: dealer.name, sub: dealer.signSub, logo };
     const set = new Set();
@@ -658,7 +686,7 @@ async function renderStudio(id) {
       if (p.keepBg || !p.maskBlob) return baseOf(p, i);
       set.add(i);
       const pk = plateKey(p);
-      const key = `${p.id}|${st.bg}|${st.format}|${pk}|${dealer.color}`;
+      const key = `${p.id}|${bgNow()}|${st.format}|${pk}|${dealer.color}`;
       if (!composites.has(key)) {
         const ck = `${p.id}|${pk}`;
         if (!cutouts.has(ck)) cutouts.set(ck, await loadCutout(baseOf(p, i), p.maskBlob));
@@ -668,6 +696,9 @@ async function renderStudio(id) {
     }));
     studioSet = set;
   };
+  const makeScene = () => (st.output === 'turntable' && spinItems.length
+    ? createTurntableScene({ items: spinItems, theme: themeOf(bgNow()), sign: { name: dealer.name, sub: dealer.signSub, logo }, vehicle: v, dealer: { ...dealer, cta: st.cta }, format: st.format, duration: effD(), showPrice: st.showPrice })
+    : createScene(sceneOpts()));
   const sceneOpts = () => ({ vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: effD(), showPrice: st.showPrice });
   let buildToken = 0;
   const build = async () => {
@@ -680,8 +711,9 @@ async function renderStudio(id) {
       sceneImages = images; studioSet = new Set();
     }
     if (token !== buildToken) return;
-    $('bgHint').textContent = st.bg === 'orig' ? '' : '배경을 지운 결과는 저장돼서 다음부터는 바로 나와요. 실내 사진은 차량 편집에서 "실내"를 눌러 두세요.';
-    scene = createScene(sceneOpts());
+    $('bgHint').textContent = bgNow() === 'orig' ? '' : st.bg === 'orig' ? '턴테이블은 배경을 지운 차가 필요해서 화이트 쇼룸으로 만들어요. 다른 쇼룸을 골라도 돼요.' : '배경을 지운 결과는 저장돼서 다음부터는 바로 나와요. 실내 사진은 차량 편집에서 "실내"를 눌러 두세요.';
+    if (st.output === 'turntable' && !spinItems.length) toast('턴테이블에 쓸 외관 사진이 없어요. 실내가 아닌 차 외관 사진을 올려 주세요.');
+    scene = makeScene();
     canvas.width = scene.W * PREVIEW_SCALE; canvas.height = scene.H * PREVIEW_SCALE;
     $('stage').dataset.format = st.format;
     if (playing) restart();
@@ -760,6 +792,25 @@ async function renderStudio(id) {
     $('playBtn').setAttribute('aria-label', playing ? '일시정지' : '재생');
   };
   $('playBtn').addEventListener('click', () => setPlaying(!playing));
+  // 턴테이블 미리보기는 손으로 끌어 360°로 돌려볼 수 있다
+  let spinDrag = null;
+  $('stage').addEventListener('pointerdown', (e) => {
+    if (st.output !== 'turntable' || !scene?.spinRange) return;
+    setPlaying(false);
+    $('stage').setPointerCapture(e.pointerId);
+    spinDrag = { x: e.clientX, t: Math.min(Math.max(pausedAt, scene.spinRange[0]), scene.spinRange[1] - 0.01) };
+  });
+  $('stage').addEventListener('pointermove', (e) => {
+    if (!spinDrag) return;
+    const [a, b] = scene.spinRange;
+    const span = b - a, w = $('stage').clientWidth || 1;
+    let t = spinDrag.t - ((e.clientX - spinDrag.x) / w) * span * 0.8;
+    t = a + ((((t - a) % span) + span) % span);
+    pausedAt = Math.min(t, b - 0.01);
+  });
+  const endSpin = () => { spinDrag = null; };
+  $('stage').addEventListener('pointerup', endSpin);
+  $('stage').addEventListener('pointercancel', endSpin);
   $('scrub').addEventListener('input', (e) => {
     setPlaying(false);
     pausedAt = (Number(e.target.value) / 1000) * effD();
@@ -798,6 +849,14 @@ async function renderStudio(id) {
   });
   pick('durSeg', 'd', 'duration', Number);
   pick('outSeg', 'out', 'output');
+  $('spinPick').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-spin]');
+    if (!b) return;
+    const p = v.photos[Number(b.dataset.spin)];
+    p.noSpin = !p.noSpin;
+    await db.putVehicle({ ...v, studio: { ...st } });
+    build();
+  });
   $('showPrice').addEventListener('change', (e) => { st.showPrice = e.target.checked; save(); build(); });
   drawMusicList();
   $('musicList').addEventListener('click', (e) => {
@@ -833,7 +892,7 @@ async function renderStudio(id) {
     const veil = $('veil');
     veil.hidden = false;
     try {
-      const fresh = createScene(sceneOpts());
+      const fresh = makeScene();
       const { blob, ext } = await recordScene(fresh, {
         audio: st.musicTrack === 'none' ? null : (ac, dest, d) => playSelected(ac, dest, d, 0),
         onProgress: (p) => { $('veilText').textContent = `영상 만드는 중 ${Math.round(p * 100)}%`; $('veilBar').style.width = `${p * 100}%`; },
