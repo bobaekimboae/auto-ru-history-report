@@ -5,7 +5,12 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
-const MAX_SIDE = 2560;            // 원본은 긴 변 기준 이 크기로 줄여서 다룬다
+// 휴대폰·태블릿은 메모리가 작아(아이폰 사파리는 캔버스 메모리를 넘기면 페이지가 꺼진다)
+// 사진을 더 작게 다루고, 화면에 없는 사진은 압축해 두었다가 볼 때 다시 푼다.
+const MOBILE = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const MAX_SIDE = MOBILE ? 1600 : 2560;   // 원본은 긴 변 기준 이 크기로 줄여서 다룬다
+const LIVE_MAX = MOBILE ? 2 : 6;         // 풀어 둔 채로 둘 사진 수
+const UNDO_MAX = MOBILE ? 4 : 15;
 const OUTPUT = { '4:3': [1600, 1200], '1:1': [1200, 1200], '16:9': [1600, 900] };
 const STORE_KEY = 'bgr-settings-v1';
 
@@ -40,6 +45,7 @@ function saveSettings() {
 
 // ---------- AI 워커 ----------
 const worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
+worker.postMessage({ type: 'config', mobile: MOBILE });
 const pending = new Map();
 
 worker.onmessage = ({ data }) => {
@@ -99,10 +105,11 @@ async function makeItem(file) {
   const blob = await new Promise((r) => src.toBlob(r, 'image/jpeg', 0.95));
   const thumb = canvas(160, Math.round(160 * h / w));
   thumb.getContext('2d').drawImage(src, 0, 0, thumb.width, thumb.height);
+  freeCanvas(src);   // 원본은 압축본(blob)으로만 들고 있다가 볼 때 푼다
   return {
-    id: nextId++, name: file.name, src, w, h, blob,
+    id: nextId++, name: file.name, src: null, w, h, blob,
     thumbUrl: thumb.toDataURL('image/jpeg', 0.8),
-    status: 'queued', keep: false, mask: null, aiMask: null, cut: null, bbox: null, undo: [], xf: null,
+    status: 'queued', keep: false, mask: null, maskBlob: null, aiRes: null, cut: null, bbox: null, undo: [], xf: null,
   };
 }
 
@@ -117,10 +124,12 @@ async function runQueue() {
     const res = await segment(item);
     if (!state.items.includes(item)) continue;      // 처리 중에 삭제됨
     if (res.type === 'mask') {
-      item.aiMask = maskCanvas(res, item.w, item.h);
-      item.mask = cloneCanvas(item.aiMask);
+      item.aiRes = { width: res.width, height: res.height, mask: res.mask };   // AI 원본 결과(작음). "AI 결과로"에 쓴다
+      if (!item.src) item.src = await decodeCanvas(item.blob);
+      item.mask = maskCanvas(item.aiRes, item.w, item.h);
       rebuildCut(item);
       item.status = 'done';
+      touch(item);
     } else {
       item.status = 'error';
       item.error = res.message;
@@ -129,6 +138,48 @@ async function runQueue() {
     if (item === currentItem()) updateStage();
   }
   state.busy = false;
+}
+
+// ---------- 메모리 관리 ----------
+const live = [];
+async function decodeCanvas(blob) {
+  const bmp = await createImageBitmap(blob);
+  const c = canvas(bmp.width, bmp.height);
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  bmp.close();
+  return c;
+}
+function freeCanvas(c) { if (c) { c.width = 0; c.height = 0; } }
+/** 최근에 본 사진만 풀어 두고 나머지는 압축해 둔다 */
+function touch(item) {
+  const i = live.indexOf(item);
+  if (i >= 0) live.splice(i, 1);
+  live.push(item);
+  while (live.length > LIVE_MAX) {
+    const old = live.find((x) => x !== currentItem() && x.status !== 'working');
+    if (!old) break;
+    live.splice(live.indexOf(old), 1);
+    hibernate(old);
+  }
+}
+async function hibernate(item) {
+  const m = item.mask;
+  if (m) {
+    const blob = await new Promise((r) => m.toBlob(r, 'image/png'));
+    if (item.mask !== m || live.includes(item)) return;   // 그 사이에 다시 열었으면 그대로 둔다
+    item.maskBlob = blob; item.mask = null; freeCanvas(m);
+  }
+  if (live.includes(item)) return;
+  freeCanvas(item.src); item.src = null;
+  freeCanvas(item.cut); item.cut = null;
+  item.undo.forEach(freeCanvas); item.undo = [];
+}
+const needsWake = (item) => !item.src || (!item.mask && item.maskBlob);
+async function wake(item) {
+  if (!item.src) item.src = await decodeCanvas(item.blob);
+  if (!item.mask && item.maskBlob) { item.mask = await decodeCanvas(item.maskBlob); item.maskBlob = null; }
+  if (item.mask && !item.cut) rebuildCut(item);
+  touch(item);
 }
 
 function rebuildCut(item) {
@@ -157,6 +208,8 @@ function render(item, target, { compare = false } = {}) {
   ctx.clearRect(0, 0, W, H);
   ctx.imageSmoothingQuality = 'high';
 
+  if (!item.src) return;   // 아직 풀지 않은 사진
+  if (item.mask && !item.cut) rebuildCut(item);
   if (compare || item.keep || !item.cut) {
     drawCover(ctx, item.src, W, H);
     item.xf = null;
@@ -313,6 +366,13 @@ function drawStage() {
   $('nextBtn').disabled = state.current >= state.items.length - 1;
   updateSaveButtons();
   if (!item) return;
+  if (needsWake(item)) {
+    $('stageOverlay').hidden = false;
+    $('stageOverlayText').textContent = '사진 불러오는 중';
+    wake(item).then(updateStage);
+    return;
+  }
+  touch(item);
 
   render(item, preview, { compare: state.comparing });
 
@@ -364,6 +424,8 @@ function updateSaveButtons() {
   const ready = readyItems();
   $('saveAllCount').textContent = ready.length ? `${ready.length}장` : '';
   $('saveAll').disabled = !ready.length;
+  $('mSave').disabled = !ready.length;
+  $('mSave').textContent = ready.length ? `${ready.length}장 저장` : '저장';
   const item = currentItem();
   $('saveOne').disabled = !item || !(item.keep || item.status === 'done');
   const prefix = cleanName(state.settings.prefix) || 'car';
@@ -410,7 +472,7 @@ preview.addEventListener('pointerdown', (e) => {
   if (!state.tool || !item?.xf) return;
   preview.setPointerCapture(e.pointerId);
   item.undo.push(cloneCanvas(item.mask));
-  if (item.undo.length > 15) item.undo.shift();
+  if (item.undo.length > UNDO_MAX) freeCanvas(item.undo.shift());
   stroke = { last: toSource(e) };
   paint(item, stroke.last, stroke.last);
 });
@@ -457,6 +519,7 @@ function cleanName(s) { return (s || '').trim().replace(/[\\/:*?"<>|]+/g, '').re
 
 async function renderBlob(item) {
   await document.fonts.ready;
+  if (needsWake(item)) await wake(item);
   const out = canvas(1, 1);
   render(item, out);
   const s = state.settings;
@@ -627,9 +690,10 @@ $('restoreBtn').addEventListener('click', () => setTool('restore'));
 $('undoBtn').addEventListener('click', undo);
 $('resetMaskBtn').addEventListener('click', () => {
   const item = currentItem();
-  if (!item?.aiMask) return;
+  if (!item?.aiRes || !item.mask) return;
   item.undo.push(cloneCanvas(item.mask));
-  item.mask = cloneCanvas(item.aiMask);
+  if (item.undo.length > UNDO_MAX) freeCanvas(item.undo.shift());
+  item.mask = maskCanvas(item.aiRes, item.w, item.h);
   rebuildCut(item);
   updateStage();
 });
@@ -641,11 +705,19 @@ $('keepOriginal').addEventListener('change', (e) => {
   if (!item.keep) runQueue();
 });
 $('clearAll').addEventListener('click', () => {
+  state.items.forEach((it) => { freeCanvas(it.src); freeCanvas(it.mask); freeCanvas(it.cut); it.undo.forEach(freeCanvas); });
+  live.length = 0;
   state.items = []; state.current = -1;
   renderQueue(); updateStage();
 });
 $('saveOne').addEventListener('click', saveOne);
 $('saveAll').addEventListener('click', saveAll);
+// 휴대폰: 설정은 아래에서 올라오는 시트로, 저장은 아래 고정 버튼으로
+const setSheet = (on) => document.body.classList.toggle('sheet-open', on);
+$('mSettings').addEventListener('click', () => setSheet(!document.body.classList.contains('sheet-open')));
+$('sheetClose').addEventListener('click', () => setSheet(false));
+$('sheetBackdrop').addEventListener('click', () => setSheet(false));
+$('mSave').addEventListener('click', () => { setSheet(false); saveAll(); });
 
 function undo() {
   const item = currentItem();
