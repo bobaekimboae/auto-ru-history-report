@@ -2,14 +2,16 @@
 import { db } from './db.js';
 import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards } from './render.js';
 import { playMusic } from './music.js';
+import { makeMask, loadCutout, composeShowroom } from './showroom.js';
 
 const $ = (id) => document.getElementById(id);
 const view = $('view');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
-const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천' };
-const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '' };
+const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천', signSub: '' };
+const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig' };
+const BACKGROUNDS = { orig: { label: '원본 사진', hint: '찍은 사진 그대로' }, 'brand-light': { label: '상사 쇼룸', hint: '배경을 지우고 흰 쇼룸에 간판' }, 'brand-dark': { label: '상사 쇼룸 블랙', hint: '배경을 지우고 블랙 쇼룸에 간판' } };
 const MAKERS = ['현대', '기아', '제네시스', '쉐보레', '르노코리아', 'KG모빌리티', 'BMW', '벤츠', '아우디', '폭스바겐', '볼보', '포르쉐', '렉서스', '토요타', '혼다', '테슬라', '미니', '랜드로버', '지프', '포드'];
 
 let dealer = { ...DEALER_DEFAULTS };
@@ -188,7 +190,7 @@ async function renderEditor(id) {
         </label>
         <input type="file" id="photoInput" accept="image/*" multiple hidden>
         <ol class="pgrid" id="pgrid"></ol>
-        <p class="hint">사진을 끌어서 순서를 바꿀 수 있어요. 휴대폰에서는 화살표 버튼을 쓰세요.</p>
+        <p class="hint">사진을 끌어서 순서를 바꿀 수 있어요. 휴대폰에서는 화살표 버튼을 쓰세요. 실내·계기판 사진은 "실내"를 눌러 두면 상사 쇼룸 배경을 쓸 때도 원본 그대로 나와요.</p>
       </section>
 
       <div class="editor-actions">
@@ -208,10 +210,12 @@ async function renderEditor(id) {
         <img src="${photoUrl(p)}" alt="사진 ${i + 1}">
         <span class="pnum num">${i + 1}</span>
         ${i === 0 ? '<span class="pcover">대표</span>' : ''}
+        ${p.keepBg ? '<span class="pkeep">실내 · 배경 유지</span>' : ''}
         <div class="ptools">
           <button type="button" data-act="left" aria-label="앞으로" ${i === 0 ? 'disabled' : ''}>◀</button>
           ${i ? '<button type="button" data-act="cover">대표로</button>' : ''}
           <button type="button" data-act="right" aria-label="뒤로" ${i === photos.length - 1 ? 'disabled' : ''}>▶</button>
+          <button type="button" data-act="keep" aria-pressed="${!!p.keepBg}" title="상사 쇼룸 배경을 쓸 때 이 사진은 배경을 지우지 않아요">실내</button>
           <button type="button" data-act="del" aria-label="삭제">삭제</button>
         </div>
       </li>`).join('');
@@ -241,6 +245,7 @@ async function renderEditor(id) {
     if (b.dataset.act === 'right' && i < photos.length - 1) move(i, i + 1);
     if (b.dataset.act === 'cover') move(i, 0);
     if (b.dataset.act === 'del') photos.splice(i, 1);
+    if (b.dataset.act === 'keep') photos[i] = { ...photos[i], keepBg: !photos[i].keepBg };
     drawPhotos();
   });
   let dragFrom = -1;
@@ -329,6 +334,14 @@ async function renderStudio(id) {
             </button>`).join('')}</div>
         </div>
         <div class="group">
+          <h3>배경</h3>
+          <div class="opts" id="bgOpts">${Object.entries(BACKGROUNDS).map(([k, b]) => `
+            <button type="button" class="opt" data-bg="${k}" aria-pressed="${k === st.bg}">
+              <span class="tpl-swatch bgsw-${k}"></span><span><strong>${b.label}</strong><small>${b.hint}</small></span>
+            </button>`).join('')}</div>
+          <p class="hint" id="bgHint">${st.bg === 'orig' ? '' : '처음 한 번은 AI가 사진마다 배경을 지워요. 결과는 저장돼서 다음부터는 바로 나와요.'}</p>
+        </div>
+        <div class="group">
           <h3>길이</h3>
           <div class="seg seg-wide" id="durSeg">
             ${[15, 30].map((d) => `<button type="button" data-d="${d}" aria-selected="${d === st.duration}">${d}초</button>`).join('')}
@@ -366,8 +379,62 @@ async function renderStudio(id) {
   const PREVIEW_SCALE = 0.5;
 
   const save = () => db.putVehicle({ ...v, studio: { ...st } });
-  const build = () => {
-    scene = createScene({ vehicle: v, images, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: st.duration, showPrice: st.showPrice });
+
+  // 상사 쇼룸 배경: 사진마다 배경을 지운 마스크를 만들어 저장하고, 영상 비율에 맞는 쇼룸 사진으로 합성한다
+  let sceneImages = images;
+  let studioSet = new Set();
+  const cutouts = new Map();
+  const composites = new Map();
+  const veilShow = (text, ratio) => { $('veil').hidden = false; $('veilText').textContent = text; $('veilBar').style.width = `${Math.round((ratio || 0) * 100)}%`; };
+  const ensureMasks = async () => {
+    const todo = v.photos.map((p, i) => [p, i]).filter(([p]) => !p.keepBg && !p.maskBlob);
+    if (!todo.length) return;
+    try {
+      for (let k = 0; k < todo.length; k++) {
+        const [p, i] = todo[k];
+        veilShow(`배경 지우는 중 ${k + 1} / ${todo.length}`, k / todo.length);
+        p.maskBlob = await makeMask(p.blob, images[i].width, images[i].height, {
+          onProgress: (r) => veilShow(`AI 준비 중 ${Math.round(r * 100)}% (처음 한 번만 내려받아요)`, r),
+        });
+      }
+      await db.putVehicle({ ...v, studio: { ...st } });
+    } finally {
+      $('veil').hidden = true;
+    }
+  };
+  const prepareImages = async () => {
+    if (st.bg === 'orig') { sceneImages = images; studioSet = new Set(); return; }
+    await ensureMasks();
+    const dark = st.bg === 'brand-dark';
+    const { w, h } = FORMATS[st.format];
+    const sign = { name: dealer.name, sub: dealer.signSub, logo };
+    const set = new Set();
+    sceneImages = await Promise.all(v.photos.map(async (p, i) => {
+      if (p.keepBg || !p.maskBlob) return images[i];
+      set.add(i);
+      const key = `${p.id}|${st.bg}|${st.format}`;
+      if (!composites.has(key)) {
+        if (!cutouts.has(p.id)) cutouts.set(p.id, await loadCutout(images[i], p.maskBlob));
+        composites.set(key, composeShowroom(cutouts.get(p.id), w, h, dark, sign));
+      }
+      return composites.get(key);
+    }));
+    studioSet = set;
+  };
+  const sceneOpts = () => ({ vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: st.duration, showPrice: st.showPrice });
+  let buildToken = 0;
+  const build = async () => {
+    const token = ++buildToken;
+    try { await prepareImages(); }
+    catch (err) {
+      toast(`배경을 지우지 못했어요: ${err.message}`);
+      st.bg = 'orig'; save();
+      $('bgOpts').querySelectorAll('[data-bg]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.bg === 'orig')));
+      sceneImages = images; studioSet = new Set();
+    }
+    if (token !== buildToken) return;
+    $('bgHint').textContent = st.bg === 'orig' ? '' : '배경을 지운 결과는 저장돼서 다음부터는 바로 나와요. 실내 사진은 차량 편집에서 "실내"를 눌러 두세요.';
+    scene = createScene(sceneOpts());
     canvas.width = scene.W * PREVIEW_SCALE; canvas.height = scene.H * PREVIEW_SCALE;
     $('stage').dataset.format = st.format;
     if (playing) restart();
@@ -394,7 +461,7 @@ async function renderStudio(id) {
     $('timeText').textContent = `${t.toFixed(1)} / ${st.duration}초`;
     raf = requestAnimationFrame(loop);
   };
-  build();
+  await build();
   raf = requestAnimationFrame(loop);
   cleanup = () => { cancelAnimationFrame(raf); stopAudio(); images.forEach((b) => b.close?.()); };
 
@@ -426,6 +493,7 @@ async function renderStudio(id) {
   });
   pick('formatOpts', 'format', 'format');
   pick('tplOpts', 'template', 'template');
+  pick('bgOpts', 'bg', 'bg');
   pick('durSeg', 'd', 'duration', Number);
   $('showPrice').addEventListener('change', (e) => { st.showPrice = e.target.checked; save(); build(); });
   $('music').addEventListener('change', (e) => { st.music = e.target.checked; save(); startAudio(); });
@@ -437,7 +505,7 @@ async function renderStudio(id) {
     const veil = $('veil');
     veil.hidden = false;
     try {
-      const fresh = createScene({ vehicle: v, images, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: st.duration, showPrice: st.showPrice });
+      const fresh = createScene(sceneOpts());
       const { blob, ext } = await recordScene(fresh, {
         music: st.music,
         onProgress: (p) => { $('veilText').textContent = `영상 만드는 중 ${Math.round(p * 100)}%`; $('veilBar').style.width = `${p * 100}%`; },
@@ -510,6 +578,7 @@ async function renderSettings() {
         <div class="field"><label for="sPhone">연락처</label><input id="sPhone" type="tel" value="${esc(dealer.phone)}" placeholder="예: 010-1234-5678" maxlength="20"></div>
         <div class="field"><label for="sRegion">지역</label><input id="sRegion" value="${esc(dealer.region)}" placeholder="예: 서울 강서구 오토랜드" maxlength="40"></div>
         <div class="field"><label for="sCta">마지막 장면 기본 문구</label><input id="sCta" value="${esc(dealer.cta)}" maxlength="24"></div>
+        <div class="field"><label for="sSignSub">쇼룸 간판 아래 문구</label><input id="sSignSub" value="${esc(dealer.signSub)}" placeholder="예: 수입차 전문 · 무사고 보증" maxlength="30"></div>
       </div>
       <div class="field">
         <span class="label">브랜드 색</span>
@@ -570,7 +639,7 @@ async function renderSettings() {
   $('logoClear').addEventListener('click', () => { logo = ''; $('logoBox').textContent = '없음'; $('logoClear').hidden = true; preview(); });
   $('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    dealer = { ...dealer, name: $('sName').value.trim(), phone: $('sPhone').value.trim(), region: $('sRegion').value.trim(), cta: $('sCta').value.trim() || DEALER_DEFAULTS.cta, hashtags: $('sTags').value.trim(), color, logo };
+    dealer = { ...dealer, name: $('sName').value.trim(), phone: $('sPhone').value.trim(), region: $('sRegion').value.trim(), cta: $('sCta').value.trim() || DEALER_DEFAULTS.cta, hashtags: $('sTags').value.trim(), signSub: $('sSignSub').value.trim(), color, logo };
     await db.putSettings(dealer);
     toast('상사 정보를 저장했어요.');
     location.hash = '#/';

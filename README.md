@@ -29,6 +29,8 @@ This is a public UI demo. It does not perform real vehicle-history lookup.
 - 상사명·연락처·로고를 하단 띠나 오른쪽 아래 라벨로 넣을 수 있고, 이 정보는 브라우저에 기억됩니다.
 - 파일 이름 앞부분(예: 차량번호)을 정해 JPG/PNG로 한 장씩 또는 ZIP으로 한 번에 저장합니다.
 
+합성 도구(마스크 정리·그림자·반사·상사 쇼룸)는 `bg-remover/compose.js`에 있고 숏폼 스튜디오도 같이 씁니다.
+
 AI 모델은 [onnx-community/ISNet-ONNX](https://huggingface.co/onnx-community/ISNet-ONNX)(AGPL-3.0)를 [Transformers.js](https://github.com/huggingface/transformers.js)로 실행합니다. 첫 실행 때 모델(약 42~84MB)을 내려받고 이후에는 브라우저 캐시를 씁니다. fp16을 지원하는 그래픽카드가 있으면 WebGPU로, 없으면 CPU로 처리합니다.
 
 로컬에서 확인하려면 저장소 루트에서 `python3 -m http.server`를 실행하고 `http://localhost:8000/bg-remover/`를 엽니다. 모듈 워커를 쓰기 때문에 파일을 직접 여는 방식(`file://`)으로는 동작하지 않습니다.
@@ -43,5 +45,6 @@ AI 모델은 [onnx-community/ISNet-ONNX](https://huggingface.co/onnx-community/I
 - 배경음악은 템플릿마다 Web Audio로 직접 합성해 저작권 걱정이 없습니다.
 - 영상은 브라우저에서 녹화해 저장합니다. H.264를 지원하는 크롬·엣지에서는 MP4, 그렇지 않으면 WebM으로 저장됩니다.
 - 게시 문구(차량 정보·강조 포인트·연락처·해시태그)를 자동으로 만들어 복사할 수 있습니다.
+- 배경을 "상사 쇼룸"(화이트·블랙)으로 고르면 배경지우개의 AI로 사진마다 배경을 지우고, 상사명 간판이 있는 가상 쇼룸에 차를 세워 영상을 만듭니다. 지운 결과는 저장돼 다음부터 바로 쓰이고, "실내"로 표시한 사진은 원본 그대로 나옵니다.
 - 상사 설정(상사명·연락처·지역·브랜드 색·로고·기본 문구·해시태그)은 모든 영상에 적용됩니다.
 - 차량과 사진은 서버가 아니라 이 브라우저(IndexedDB)에만 저장됩니다.

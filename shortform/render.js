@@ -92,6 +92,16 @@ export function createScene(opts) {
   const title = fmt.title(v);
   const price = fmt.price(v.price);
   const showPrice = opts.showPrice !== false;
+  // 상사 쇼룸으로 합성한 사진(화면 비율과 같고 위쪽에 간판이 있음)은 확대를 줄이고 글자를 간판 아래로 내린다
+  const studio = opts.studio || new Set();
+  const studioCover = studio.has(0);
+  const L = {
+    introY: studioCover ? (vertical ? 0.79 : 0.7) : (vertical ? 0.62 : 0.6),
+    factY: studio.size ? (vertical ? 0.76 : 0.82) : (vertical ? 0.64 : null),
+    tagY: studio.size && vertical ? H * 0.335 : (vertical ? H * 0.075 : u * 4),
+    tagBottom: studio.size > 0 && !vertical,     // 가로 쇼룸 화면은 간판을 가리지 않게 가격표를 오른쪽 아래로
+    badge: !studio.size,
+  };
 
   const introD = template === 'dynamic' ? 1.8 : 2.4;
   const outroD = template === 'luxury' ? 3.4 : 3.0;
@@ -112,16 +122,17 @@ export function createScene(opts) {
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.drawImage(blurred[idx], offsetX, 0, W, H);
-    const landscape = img.width / img.height > W / H;
+    const isStudio = studio.has(idx);
+    const landscape = !isStudio && img.width / img.height > W / H;
     let base;
     if (landscape && vertical) base = (W / img.width) * (template === 'dynamic' ? 1.45 : 1.18);
     else base = Math.max(W / img.width, H / img.height);
-    const zoom = base * (1 + (template === 'luxury' ? 0.06 : 0.1) * p + zoomBoost);
+    const zoom = base * (1 + (isStudio ? 0.035 : template === 'luxury' ? 0.06 : 0.1) * p + zoomBoost);
     const dw = img.width * zoom, dh = img.height * zoom;
     const panRoom = Math.max(0, dw - W);
     const pan = template === 'dynamic' || (landscape && vertical) ? (dir > 0 ? p : 1 - p) : 0.5;
     const x = -panRoom * (0.15 + 0.7 * pan) + (panRoom ? 0 : (W - dw) / 2) + offsetX;
-    const y = (H - dh) / 2 + (vertical ? -H * 0.04 : 0);
+    const y = isStudio ? (H - dh) * 0.85 : (H - dh) / 2 + (vertical ? -H * 0.04 : 0);
     if (landscape && vertical) {
       ctx.shadowColor = 'rgba(0,0,0,0.45)';
       ctx.shadowBlur = u * 4;
@@ -131,7 +142,7 @@ export function createScene(opts) {
   }
 
   function drawLetterbox(ctx) {
-    const bar = vertical ? H * 0.06 : H * 0.08;
+    const bar = vertical ? H * 0.06 : H * (studio.size ? 0.045 : 0.08);
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, bar);
     ctx.fillRect(0, H - bar, W, bar);
@@ -141,7 +152,7 @@ export function createScene(opts) {
   }
 
   function drawBadge(ctx, a) {
-    if (!dealer.name && !logo) return;
+    if (!L.badge || (!dealer.name && !logo)) return;
     ctx.save();
     ctx.globalAlpha = a;
     const pad = u * 1.6, h = u * 6.2;
@@ -168,7 +179,7 @@ export function createScene(opts) {
     ctx.font = `800 ${size}px ${titleFont}`;
     const tw = ctx.measureText(price).width;
     const padX = u * 2.4, h = size * 1.7;
-    const x = W - tw - padX * 2 - u * 4, y = vertical ? H * 0.075 : u * 4;
+    const x = W - tw - padX * 2 - u * 4, y = L.tagBottom ? H - h - u * 6 : L.tagY;
     if (template === 'luxury') {
       ctx.strokeStyle = GOLD; ctx.lineWidth = 2;
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -196,7 +207,7 @@ export function createScene(opts) {
     ctx.globalAlpha = a;
     const boxW = vertical ? W * 0.84 : W * 0.42;
     const x = vertical ? (W - boxW) / 2 : u * 5;
-    const yBase = vertical ? H * 0.64 : H - u * 26;
+    const yBase = L.factY != null ? H * L.factY : H - u * 26;
     const y = yBase + (1 - inP) * u * 4;
     const kSize = u * 2.8, vSize = u * 6.2;
     const h = kSize + vSize + u * 6;
@@ -222,7 +233,7 @@ export function createScene(opts) {
     } else {
       ctx.textAlign = 'center';
       const cx = W / 2;
-      const yy = vertical ? H * 0.7 : H * 0.74;
+      const yy = studio.size ? H * (vertical ? 0.79 : 0.84) : vertical ? H * 0.7 : H * 0.74;
       ctx.fillStyle = GOLD; ctx.font = `500 ${kSize}px ${BODY_FONT}`;
       ctx.letterSpacing = `${kSize * 0.3}px`;
       ctx.fillText(fact.k, cx, yy);
@@ -248,7 +259,7 @@ export function createScene(opts) {
     const a = ease.out(clamp01((t - 0.15) / 0.6));
     ctx.globalAlpha = a;
     const cx = vertical ? u * 6 : u * 5;
-    const ty = vertical ? H * 0.62 : H * 0.6;
+    const ty = H * L.introY;
     ctx.fillStyle = template === 'luxury' ? GOLD : '#fff';
     ctx.font = `600 ${u * 3}px ${BODY_FONT}`;
     ctx.fillText([v.year, v.plate].filter(Boolean).join(' · '), cx, ty + (1 - a) * u * 3);
