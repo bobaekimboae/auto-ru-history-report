@@ -376,7 +376,8 @@ a { color: inherit; }
 .pd-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
 @media (max-width: 560px) { .pd-stage img { max-height: 44vh; } }
 .bg-thumb { width: 45px; height: 34px; }
-#outSeg { grid-template-columns: repeat(3, 1fr); }
+#outSeg { grid-template-columns: repeat(4, 1fr); }
+#outSeg button { padding-inline: 2px; font-size: 13px; white-space: nowrap; }
 .stage { touch-action: pan-y; }
 .spin-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .spin-pick button { position: relative; padding: 0; border: 2px solid var(--accent); border-radius: 6px; background: none; cursor: pointer; }

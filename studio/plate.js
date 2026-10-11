@@ -19,7 +19,7 @@ function getWorker() {
   worker = new Worker(new URL('./plate-worker.js', import.meta.url), { type: 'module' });
   worker.onmessage = ({ data }) => {
     if (data.type === 'progress') onModelProgress?.(data.loaded / data.total);
-    else if (data.type === 'boxes' || data.type === 'run-error') {
+    else if (data.type === 'boxes' || data.type === 'exterior' || data.type === 'run-error') {
       pending.get(data.id)?.(data);
       pending.delete(data.id);
     } else if (data.type === 'load-error') {
@@ -40,13 +40,26 @@ export async function detectPlate(blob, { onProgress } = {}) {
     getWorker().postMessage({ type: 'run', id, blob });
   });
   if (res.type !== 'boxes') throw new Error(res.message || '번호판을 찾지 못했어요');
-  const best = res.boxes.filter((b) => b.score >= 0.9).sort((a, b) => b.score - a.score)[0];
+  // 바닥에 비친 번호판도 높은 점수로 잡히므로, 점수가 비슷하면 위쪽(실제 번호판)을 고른다
+  const sure = res.boxes.filter((b) => b.score >= 0.9).sort((a, b) => b.score - a.score);
+  const best = sure.filter((b) => b.score >= sure[0]?.score - 0.06).sort((a, b) => (a.ymin + a.ymax) - (b.ymin + b.ymax))[0];
   if (!best) return null;
   // 모델 상자는 글자에 딱 맞는 편이라 테두리까지 조금 넓힌다
   const w = best.xmax - best.xmin, h = best.ymax - best.ymin;
   const x0 = clamp(best.xmin - w * 0.04, 0, 1), x1 = clamp(best.xmax + w * 0.04, 0, 1);
   const y0 = clamp(best.ymin - h * 0.12, 0, 1), y1 = clamp(best.ymax + h * 0.12, 0, 1);
   return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+}
+
+/** 차 외관 사진이면 true(실내·엔진룸·계기판이면 false). 분류가 안 되면 null. */
+export async function isExterior(blob, { onProgress } = {}) {
+  onModelProgress = onProgress;
+  const id = nextId++;
+  const res = await new Promise((resolve) => {
+    pending.set(id, resolve);
+    getWorker().postMessage({ type: 'classify', id, blob });
+  });
+  return res.type === 'exterior' ? res.score >= 0.4 : null;
 }
 
 /** 찾지 못했을 때 손으로 맞출 시작 위치(아래 가운데). */

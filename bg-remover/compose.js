@@ -22,7 +22,54 @@ export function maskCanvas({ width, height, mask }, w, h) {
   const ctx = out.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(small, 0, 0, w, h);
-  return keepMainSubject(out);
+  return fillHoles(keepMainSubject(out));
+}
+
+// 차체 안쪽에 뚫린 구멍(하늘이 비친 보닛·지붕, 유리 너머)은 차의 일부로 채운다.
+// 바깥과 이어지지 않은 빈 곳만 채우고, 바퀴 사이처럼 차 아래쪽에 닿는 빈 곳은 그대로 둔다.
+export function fillHoles(mask) {
+  const W = mask.width, H = mask.height;
+  const k = Math.min(1, 480 / Math.max(W, H));
+  const w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+  const small = canvas(w, h);
+  const sx = small.getContext('2d', { willReadFrequently: true });
+  sx.drawImage(mask, 0, 0, w, h);
+  const alpha = sx.getImageData(0, 0, w, h).data;
+  const empty = (i) => alpha[i * 4 + 3] < 128;
+  const seen = new Uint8Array(w * h);
+  const queue = new Int32Array(w * h);
+  let head = 0, tail = 0;
+  const push = (i) => { if (!seen[i] && empty(i)) { seen[i] = 1; queue[tail++] = i; } };
+  for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+  while (head < tail) {
+    const i = queue[head++];
+    const x = i % w;
+    if (x > 0) push(i - 1);
+    if (x < w - 1) push(i + 1);
+    if (i >= w) push(i - w);
+    if (i < w * (h - 1)) push(i + w);
+  }
+  // 차가 차지한 범위(아래 12%는 바퀴 사이 공간이라 빼고)
+  let y0 = h, y1 = -1;
+  for (let i = 0; i < w * h; i++) if (!empty(i)) { const y = (i / w) | 0; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (y1 < 0) return mask;
+  const limit = y1 - (y1 - y0) * 0.12;
+  const holes = sx.createImageData(w, h);
+  let any = false;
+  for (let i = 0; i < w * h; i++) {
+    if (seen[i] || !empty(i) || (i / w) >= limit) continue;
+    holes.data[i * 4] = holes.data[i * 4 + 1] = holes.data[i * 4 + 2] = 255;
+    holes.data[i * 4 + 3] = 255;
+    any = true;
+  }
+  if (!any) return mask;
+  sx.clearRect(0, 0, w, h);
+  sx.putImageData(holes, 0, 0);
+  const ctx = mask.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(small, 0, 0, W, H);
+  return mask;
 }
 
 // 차량(가장 큰 덩어리)과 그에 맞먹는 덩어리만 남기고, 떨어져 있는 작은 조각은 지운다.
