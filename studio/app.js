@@ -8,6 +8,7 @@ import { openPlateEditor } from './plate-ui.js';
 import { openSpotEditor } from './spots-ui.js';
 import { spotToImage, drawSpot } from './spots.js';
 import { renderCapture, SHOTS } from './capture.js';
+import { drawCaption, makeInfoCard, buildListingPage } from './extras.js';
 import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
 import { createTurntableScene, isSpinPhoto } from './turntable.js';
 import { renderShowroom3D } from './showroom3d.js';
@@ -21,7 +22,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천', signSub: '' };
-const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0, plate: 'off', photoSize: '4:3', enhance: true, sharpen: true, banner: true, narr: false, voice: 'F1', narrSpeed: 1.05 };
+const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0, plate: 'off', photoSize: '4:3', enhance: true, sharpen: true, banner: true, narr: false, voice: 'F1', narrSpeed: 1.05, captions: true, infoCard: true };
 const BACKGROUNDS = {
   orig: { label: '원본 사진', hint: '찍은 사진 그대로' },
   'brand-light': { label: '화이트 쇼룸', hint: '밝고 깨끗한 기본', theme: 'light' },
@@ -534,6 +535,7 @@ async function renderStudio(id) {
           <label class="switch"><input type="checkbox" id="enhanceSw" ${st.enhance ? 'checked' : ''}><span class="track"></span>자동 보정 (밝기·대비·색감)</label>
           <label class="switch"><input type="checkbox" id="sharpenSw" ${st.sharpen ? 'checked' : ''}><span class="track"></span>선명하게</label>
           <label class="switch"><input type="checkbox" id="bannerSw" ${st.banner ? 'checked' : ''}><span class="track"></span>상사 배너 (상사명·가격·연락처)</label>
+          <label class="switch"><input type="checkbox" id="cardSw" ${st.infoCard ? 'checked' : ''}><span class="track"></span>차량 정보 카드 추가 (윈도 스티커)</label>
         </div>
         <div class="group" id="fmtGroup">
           <h3>형식</h3>
@@ -588,6 +590,7 @@ async function renderStudio(id) {
               <select id="narrVoice">${VOICES.map(([k, l]) => `<option value="${k}" ${k === st.voice ? 'selected' : ''}>${l}</option>`).join('')}</select>
               <select id="narrSpeed" aria-label="말 빠르기">${[[0.95, '천천히'], [1.05, '보통'], [1.15, '빠르게'], [1.25, '아주 빠르게']].map(([k, l]) => `<option value="${k}" ${k === st.narrSpeed ? 'selected' : ''}>${l}</option>`).join('')}</select>
             </div>
+            <label class="switch"><input type="checkbox" id="capSw" ${st.captions ? 'checked' : ''}><span class="track"></span>나레이션 자막 넣기</label>
             <button type="button" class="btn btn-primary btn-sm btn-block" id="narrMake">음성 만들기</button>
             <p class="hint" id="narrHint"></p>
           </div>
@@ -835,6 +838,8 @@ async function renderStudio(id) {
         if (n > 4) veilShow(`매물 사진 보정 중 ${i + 1} / ${n}`, i / n);
         out.push(await listingPhoto(v.photos[i], i));
       }
+      // 정보 카드 사진은 배너가 없는 대표 사진(번호판 가리기 적용)으로
+      if (st.infoCard && out.length) out.push(makeInfoCard(v, dealer, logo, baseOf(v.photos[0], 0)));
     } finally { $('veil').hidden = true; }
     return out;
   };
@@ -864,7 +869,14 @@ async function renderStudio(id) {
     } catch (err) { console.warn('3D 쇼룸을 만들지 못해 평면 배경을 써요', err); return null; }
   };
   let spin3d = null;
-  const makeScene = () => (st.output === 'photos' ? listingScene() : st.output === 'turntable' && spinItems.length
+  // 나레이션 자막을 영상 위에 겹친다
+  const withCaptions = (sc) => {
+    if (st.output === 'photos' || !st.narr || !st.captions || !narrBuf || !v.narration?.starts) return sc;
+    const narr = { lines: v.narration.text.split('\n').map((x) => x.trim()).filter(Boolean), starts: v.narration.starts, durs: v.narration.durs };
+    const base = sc.draw.bind(sc);
+    return { ...sc, draw(ctx, t) { base(ctx, t); drawCaption(ctx, sc.W, sc.H, t, narr, NARR_DELAY); } };
+  };
+  const makeScene = () => withCaptions(st.output === 'photos' ? listingScene() : st.output === 'turntable' && spinItems.length
     ? createTurntableScene({ items: spinItems, bg3d: spin3d, theme: themeOf(bgNow()), sign: { name: dealer.name, sub: dealer.signSub, logo }, vehicle: v, dealer: { ...dealer, cta: st.cta }, format: st.format, duration: effD(), showPrice: st.showPrice })
     : createScene(sceneOpts()));
   const sceneOpts = () => ({ spots: v.photos.map((p) => p.spots || []), vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: effD(), showPrice: st.showPrice });
@@ -1049,7 +1061,7 @@ async function renderStudio(id) {
   pick('durSeg', 'd', 'duration', Number);
   pick('outSeg', 'out', 'output');
   pick('sizeSeg', 'size', 'photoSize');
-  [['enhanceSw', 'enhance'], ['sharpenSw', 'sharpen'], ['bannerSw', 'banner']].forEach(([id, k]) => $(id).addEventListener('change', (e) => { st[k] = e.target.checked; save(); build(); }));
+  [['enhanceSw', 'enhance'], ['sharpenSw', 'sharpen'], ['bannerSw', 'banner'], ['cardSw', 'infoCard'], ['capSw', 'captions']].forEach(([id, k]) => $(id).addEventListener('change', (e) => { st[k] = e.target.checked; save(); build(); }));
   $('spinPick').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-spin]');
     if (!b) return;
@@ -1194,7 +1206,8 @@ async function renderStudio(id) {
       <button class="btn ${canShare ? 'btn-quiet' : 'btn-primary'} btn-block" id="zipBtn" type="button">사진 ${blobs.length}장 저장 (ZIP)</button>
       <div class="field"><label for="caption">게시 문구</label><textarea id="caption" rows="8">${esc(buildCaption(v))}</textarea></div>
       <button class="btn btn-quiet btn-block" id="copyBtn" type="button">게시 문구 복사</button>
-      ${isListing ? `<p class="hint">파일 이름 순서가 사진 순서예요. 매물 등록 화면에서 한꺼번에 골라 올리세요.</p>
+      ${isListing ? `<button class="btn btn-quiet btn-block" id="pageBtn" type="button">매물 웹페이지 저장 (360° 돌려보기·핫스팟·전화 버튼)</button>
+      <p class="hint">파일 이름 순서가 사진 순서예요. 매물 등록 화면에서 한꺼번에 골라 올리세요. 웹페이지 파일은 카카오톡으로 보내거나 홈페이지에 올리면 손님이 휴대폰에서 바로 열어 봐요.</p>
       <div class="channels">
         <a href="https://www.bobaedream.co.kr/" target="_blank" rel="noopener">보배드림</a>
         <a href="https://www.encar.com/" target="_blank" rel="noopener">엔카</a>
@@ -1212,6 +1225,32 @@ async function renderStudio(id) {
       const blob = await zip.generateAsync({ type: 'blob' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = `${base}_${isListing ? 'photos' : 'slides'}.zip`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    });
+    $('pageBtn')?.addEventListener('click', async () => {
+      // 사진은 가로 1280px로 줄여 파일 하나에 담는다
+      const small = (cv) => {
+        const k = Math.min(1, 1280 / cv.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(cv.width * k); c.height = Math.round(cv.height * k);
+        c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+        return c.toDataURL('image/jpeg', 0.82);
+      };
+      const n = Math.min(v.photos.length, listing.length);
+      const photosUrl = listing.slice(0, n).map(small);
+      // 360° 돌려보기에는 외관 사진만(실내·계기판은 AI로 가려낸다)
+      veilShow('매물 웹페이지 만드는 중', 0.5);
+      const spinIdx = [];
+      try {
+        for (let i = 0; i < n; i++) if (!v.photos[i].keepBg && !(await photoIsInterior(v.photos[i]))) spinIdx.push(i);
+      } finally { $('veil').hidden = true; }
+      await db.putVehicle({ ...v, studio: { ...st } });
+      const html = buildListingPage({ v, dealer, photos: photosUrl, spin: spinIdx.length >= 3 ? spinIdx.map((i) => photosUrl[i]) : [],
+        spots: v.photos.flatMap((p, i) => (p.spots || []).map((sp) => ({ ...sp, photo: i }))), caption: buildCaption(v) });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+      a.download = `${base}_매물페이지.html`;
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     });
