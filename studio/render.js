@@ -1,5 +1,4 @@
 // 숏폼 영상 엔진: 차량 사진과 매물 정보를 템플릿에 맞춰 캔버스에 그리고, MediaRecorder로 MP4/WebM을 만든다.
-import { playMusic } from './music.js';
 
 export const FORMATS = {
   '9:16': { w: 1080, h: 1920, label: '세로 9:16', hint: '릴스·쇼츠·틱톡' },
@@ -448,19 +447,22 @@ export function pickMime() {
   return cands.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
 }
 
-/** 장면을 실제 시간으로 재생하며 녹화한다. 탭을 다른 곳으로 옮기면 녹화가 멈출 수 있다. */
-export async function recordScene(scene, { music = true, onProgress } = {}) {
+/**
+ * 장면을 실제 시간으로 재생하며 녹화한다. 탭을 다른 곳으로 옮기면 녹화가 멈출 수 있다.
+ * audio(ctx, dest, duration)는 배경음악을 틀고 { stop } 을 돌려주는 함수다(없으면 무음).
+ */
+export async function recordScene(scene, { audio = null, onProgress } = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = scene.W; canvas.height = scene.H;
   const ctx = canvas.getContext('2d');
   scene.draw(ctx, 0);
   const stream = canvas.captureStream(30);
   let ac = null, track = null;
-  if (music) {
+  if (audio) {
     ac = new AudioContext();
     await ac.resume();
     const dest = ac.createMediaStreamDestination();
-    track = playMusic(ac, dest, scene.template, scene.duration, ac.currentTime + 0.05);
+    track = audio(ac, dest, scene.duration);
     stream.addTrack(dest.stream.getAudioTracks()[0]);
   }
   const mimeType = pickMime();
