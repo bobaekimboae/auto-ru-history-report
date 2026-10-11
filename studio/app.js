@@ -7,6 +7,7 @@ import { detectPlate, isExterior, applyPlate, dealerPlateCanvas, PLATE_MODES } f
 import { openPlateEditor } from './plate-ui.js';
 import { openSpotEditor } from './spots-ui.js';
 import { spotToImage, drawSpot } from './spots.js';
+import { renderCapture, SHOTS } from './capture.js';
 import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
 import { createTurntableScene, isSpinPhoto } from './turntable.js';
 import { renderShowroom3D } from './showroom3d.js';
@@ -83,6 +84,7 @@ async function route() {
   if (path === '/') await renderDashboard();
   else if (path === '/vehicle/new') await renderEditor(null);
   else if ((m = path.match(/^\/vehicle\/([\w-]+)\/video$/))) await renderStudio(m[1]);
+  else if ((m = path.match(/^\/vehicle\/([\w-]+)\/capture$/))) await renderCaptureRoute(m[1]);
   else if ((m = path.match(/^\/vehicle\/([\w-]+)$/))) await renderEditor(m[1]);
   else if (path === '/settings') await renderSettings();
   else if (path === '/import') await renderImportReceiver();
@@ -329,6 +331,7 @@ async function renderEditor(id) {
           <span>외관·실내·옵션 사진 7~20장을 추천해요. 첫 번째 사진이 대표 사진이 되고 영상 첫 장면에 나와요.</span>
         </label>
         <input type="file" id="photoInput" accept="image/*" multiple hidden>
+        <button type="submit" class="btn btn-quiet btn-block cap-open" data-next="capture">📷 촬영 가이드로 찍기 <small>외관 8각도(360°·턴테이블용) + 실내 7컷을 순서대로 안내해요</small></button>
         <ol class="pgrid" id="pgrid"></ol>
         <p class="hint">사진을 끌어서 순서를 바꿀 수 있어요. 휴대폰에서는 화살표 버튼을 쓰세요. 실내·계기판 사진은 "실내"를 눌러 두면 상사 쇼룸 배경을 쓸 때도 원본 그대로 나와요.</p>
       </section>
@@ -432,13 +435,40 @@ async function renderEditor(id) {
     const data = Object.fromEntries(['plate', 'maker', 'model', 'trim', 'year', 'mileage', 'fuel', 'transmission', 'color', 'accident', 'price', 'highlights', 'description'].map((k) => [k, String(f.get(k) || '').trim()]));
     data.mileage = data.mileage.replace(/[^\d]/g, '');
     data.price = data.price.replace(/[^\d]/g, '');
+    if (!data.model && e.submitter?.dataset.next === 'capture') data.model = '촬영 중인 차량';
     if (!data.model) { $('model').focus(); toast('모델명을 입력해 주세요.'); return; }
     const next = e.submitter?.dataset.next;
     if (next === 'video' && !photos.length) { toast('영상을 만들려면 사진을 한 장 이상 올려 주세요.'); return; }
     await db.putVehicle({ ...v, ...data, photos });
     toast('저장했어요.');
-    location.hash = next === 'video' ? `#/vehicle/${v.id}/video` : '#/';
+    location.hash = next === 'video' ? `#/vehicle/${v.id}/video` : next === 'capture' ? `#/vehicle/${v.id}/capture` : '#/';
   });
+}
+
+// ---------- 촬영 가이드 ----------
+async function renderCaptureRoute(id) {
+  setNav('');
+  const v = await db.getVehicle(id);
+  if (!v) { location.hash = '#/'; return; }
+  document.body.classList.add('capturing');
+  const order = (shot) => SHOTS.findIndex((s) => s.id === shot);
+  const stop = await renderCapture(view, {
+    vehicle: v,
+    toast,
+    onPhoto: async (blob, shot) => {
+      const p = await shrinkPhoto(blob);
+      Object.assign(p, { shot: shot.id, exterior: !shot.interior, keepBg: !!shot.interior });
+      // 같은 각도를 다시 찍으면 바꾸고, 가이드 순서대로 끼워 넣는다(가이드로 찍지 않은 사진은 뒤에)
+      const photos = (v.photos || []).filter((x) => x.shot !== shot.id);
+      const at = photos.findIndex((x) => !x.shot || order(x.shot) > order(shot.id));
+      photos.splice(at < 0 ? photos.length : at, 0, p);
+      v.photos = photos;
+      v.captured = [...new Set([...(v.captured || []), shot.id])];
+      await db.putVehicle(v);
+    },
+    onDone: () => { location.hash = `#/vehicle/${v.id}`; },
+  });
+  cleanup = () => { stop(); document.body.classList.remove('capturing'); };
 }
 
 // ---------- 영상 만들기 ----------
