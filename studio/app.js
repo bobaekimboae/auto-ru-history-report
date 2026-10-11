@@ -1,7 +1,7 @@
 // 매물 숏폼 스튜디오: 대시보드 · 차량 등록(사진 정렬) · 영상 만들기 · 상사 설정
 import { db } from './db.js';
 import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards, usedPhotoIndices, slidePlan, renderSlides } from './render.js';
-import { playMusic } from './music.js';
+import { playMusic, playBuffer, MUSIC_TRACKS } from './music.js';
 import { makeMask, loadCutout, composeShowroom, looksLikeInterior } from './showroom.js';
 import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
 
@@ -11,7 +11,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천', signSub: '' };
-const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video' };
+const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0 };
 const BACKGROUNDS = { orig: { label: '원본 사진', hint: '찍은 사진 그대로' }, 'brand-light': { label: '상사 쇼룸', hint: '배경을 지우고 흰 쇼룸에 간판' }, 'brand-dark': { label: '상사 쇼룸 블랙', hint: '배경을 지우고 블랙 쇼룸에 간판' } };
 const MAKERS = ['현대', '기아', '제네시스', '쉐보레', '르노코리아', 'KG모빌리티', 'BMW', '벤츠', '아우디', '폭스바겐', '볼보', '포르쉐', '렉서스', '토요타', '혼다', '테슬라', '미니', '랜드로버', '지프', '포드'];
 
@@ -413,6 +413,13 @@ async function renderStudio(id) {
   if (!v) { location.hash = '#/'; return; }
   if (!v.photos?.length) { toast('사진을 먼저 올려 주세요.'); location.hash = `#/vehicle/${id}`; return; }
   const st = { ...STUDIO_DEFAULTS, cta: dealer.cta, ...(v.studio || {}) };
+  if (v.studio && v.studio.music === false && !v.studio.musicTrack) st.musicTrack = 'none';
+  // 직접 올린 음악은 차량에 저장해 두고, 열 때 한 번 풀어 둔다
+  let customBuffer = null;
+  if (v.customMusic?.blob) {
+    try { customBuffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await v.customMusic.blob.arrayBuffer()); } catch { customBuffer = null; }
+  }
+  if (st.musicTrack === 'custom' && !customBuffer) st.musicTrack = 'auto';
   const images = await Promise.all(v.photos.map((p) => createImageBitmap(p.blob)));
   const logo = dealer.logo ? await loadImage(dealer.logo).catch(() => null) : null;
   await Promise.all(['800 40px "Gothic A1"', '700 40px "Nanum Myeongjo"', '600 40px "IBM Plex Sans KR"'].map((f) => document.fonts.load(f).catch(() => null)));
@@ -481,8 +488,21 @@ async function renderStudio(id) {
         <div class="group">
           <h3>내용</h3>
           <label class="switch"><input type="checkbox" id="showPrice" ${st.showPrice ? 'checked' : ''}><span class="track"></span>가격 보여주기</label>
-          <label class="switch" id="musicRow"><input type="checkbox" id="music" ${st.music ? 'checked' : ''}><span class="track"></span>배경음악 넣기 <small>템플릿마다 다른 자체 음원</small></label>
           <div class="field"><label for="cta">마지막 장면 문구</label><input id="cta" value="${esc(st.cta)}" maxlength="24" placeholder="예: 지금 바로 문의하세요"></div>
+        </div>
+        <div class="group" id="musicGroup">
+          <h3>배경음악</h3>
+          <ul class="music-list" id="musicList"></ul>
+          <div class="music-upload">
+            <label class="btn btn-quiet btn-sm" for="musicFile">내 음악 파일 올리기</label>
+            <input type="file" id="musicFile" accept="audio/*" hidden>
+            <span class="hint">MP3·M4A·WAV</span>
+          </div>
+          <div class="field" id="offsetField" hidden>
+            <label for="musicOffset">음악 시작 위치 <output class="num" id="musicOffsetOut"></output></label>
+            <input type="range" id="musicOffset" min="0" max="0" step="1" value="0">
+          </div>
+          <p class="hint">기본 음악은 이 도구가 직접 만든 음원이라 저작권 걱정이 없어요. 직접 올린 음악은 저작권이 있으면 틱톡·인스타에서 소리가 꺼질 수 있어요.</p>
         </div>
         <button class="btn btn-primary btn-lg btn-block" id="renderBtn" type="button">영상 만들기</button>
         <p class="hint" id="renderHint">만드는 동안 영상 길이만큼 시간이 걸려요. 이 탭을 그대로 두세요.</p>
@@ -516,7 +536,7 @@ async function renderStudio(id) {
   const syncOutputUI = () => {
     const isSlides = st.output === 'slides';
     $('durGroup').hidden = isSlides;
-    $('musicRow').hidden = isSlides;
+    $('musicGroup').hidden = isSlides;
     $('renderBtn').textContent = isSlides ? `사진 슬라이드 만들기 (${slides().times.length}장)` : '영상 만들기';
     $('renderHint').textContent = isSlides
       ? '표지·사진마다 한 장·마무리 한 장으로 만들어요. 틱톡 사진 게시물은 최대 35장이고 음악은 틱톡에서 고르면 돼요.'
@@ -589,13 +609,52 @@ async function renderStudio(id) {
     else pausedAt = Math.min(pausedAt, effD() - 0.01);
     syncOutputUI();
   };
-  const stopAudio = () => { audio?.track.stop(); audio?.ctx.close(); audio = null; };
+  // 고른 배경음악을 dest로 튼다. offset은 영상 안에서의 시작 시점(미리보기 중간부터 들을 때)
+  const styleOf = (id) => (id === 'auto' || id === 'custom' ? st.template : id);
+  const playSelected = (ac, dest, duration, offset = 0) => {
+    if (st.musicTrack === 'none') return null;
+    if (st.musicTrack === 'custom' && customBuffer) return playBuffer(ac, dest, customBuffer, duration, st.musicOffset + offset);
+    return playMusic(ac, dest, styleOf(st.musicTrack), duration);
+  };
+  let sample = null;
+  const stopSample = () => { clearTimeout(sample?.timer); sample?.track?.stop(); sample?.ac.close(); sample = null; document.querySelectorAll('.mplay[aria-pressed="true"]').forEach((b) => { b.setAttribute('aria-pressed', 'false'); b.textContent = '▶'; }); };
+  const playSample = (id, btn) => {
+    const same = sample && sample.id === id;
+    stopSample();
+    if (same) return;
+    const ac = new AudioContext();
+    const track = id === 'custom' ? playBuffer(ac, ac.destination, customBuffer, 10, st.musicOffset) : playMusic(ac, ac.destination, styleOf(id), 10);
+    sample = { id, ac, track, timer: setTimeout(stopSample, 10000) };
+    btn.setAttribute('aria-pressed', 'true'); btn.textContent = '■';
+  };
+  const drawMusicList = () => {
+    const rows = [
+      { id: 'auto', name: '템플릿에 맞춤', mood: `${TEMPLATES[st.template].label} 템플릿 기본 음악` },
+      ...MUSIC_TRACKS.map((t) => ({ ...t, mood: `${t.mood} · ${t.bpm} BPM` })),
+      ...(customBuffer ? [{ id: 'custom', name: v.customMusic.name, mood: `내 음악 · ${Math.round(customBuffer.duration)}초` }] : []),
+      { id: 'none', name: '음악 없음', mood: '소리 없이 만들어요' },
+    ];
+    $('musicList').innerHTML = rows.map((r) => `
+      <li>
+        <button type="button" class="mtrack" data-track="${r.id}" aria-pressed="${r.id === st.musicTrack}"><strong>${esc(r.name)}</strong><small>${esc(r.mood)}</small></button>
+        ${r.id === 'none' ? '' : `<button type="button" class="mplay" data-play="${r.id}" aria-pressed="false" aria-label="${esc(r.name)} 미리 듣기">▶</button>`}
+      </li>`).join('');
+    const showOffset = st.musicTrack === 'custom' && customBuffer;
+    $('offsetField').hidden = !showOffset;
+    if (showOffset) {
+      const max = Math.max(0, Math.floor(customBuffer.duration - 5));
+      $('musicOffset').max = String(max);
+      $('musicOffset').value = String(Math.min(st.musicOffset, max));
+      $('musicOffsetOut').textContent = `${Math.floor(st.musicOffset / 60)}:${String(Math.floor(st.musicOffset % 60)).padStart(2, '0')}`;
+    }
+  };
+  const stopAudio = () => { audio?.track?.stop(); audio?.ctx.close(); audio = null; };
   const startAudio = () => {
     stopAudio();
-    if (!soundOn || !st.music || !playing) return;
+    if (!soundOn || !playing) return;
     const ac = new AudioContext();
     const offset = currentTime();
-    audio = { ctx: ac, track: playMusic(ac, ac.destination, st.template, Math.max(0.5, effD() - offset)) };
+    audio = { ctx: ac, track: playSelected(ac, ac.destination, Math.max(0.5, effD() - offset), offset) };
   };
   const currentTime = () => (playing ? ((performance.now() - t0) / 1000) % effD() : pausedAt);
   const restart = () => { t0 = performance.now(); pausedAt = 0; startAudio(); };
@@ -612,7 +671,7 @@ async function renderStudio(id) {
   };
   await build();
   raf = requestAnimationFrame(loop);
-  cleanup = () => { cancelAnimationFrame(raf); stopAudio(); images.forEach((b) => b.close?.()); };
+  cleanup = () => { cancelAnimationFrame(raf); stopAudio(); stopSample?.(); images.forEach((b) => b.close?.()); };
 
   const setPlaying = (on) => {
     if (on === playing) return;
@@ -629,7 +688,7 @@ async function renderStudio(id) {
   $('soundBtn').addEventListener('click', (e) => {
     soundOn = !soundOn;
     e.currentTarget.setAttribute('aria-pressed', String(soundOn));
-    if (soundOn && !st.music) toast('배경음악이 꺼져 있어요.');
+    if (soundOn && st.musicTrack === 'none') toast('배경음악을 "음악 없음"으로 골랐어요.');
     startAudio();
   });
 
@@ -642,11 +701,36 @@ async function renderStudio(id) {
   });
   pick('formatOpts', 'format', 'format');
   pick('tplOpts', 'template', 'template');
+  $('tplOpts').addEventListener('click', () => drawMusicList());
   pick('bgOpts', 'bg', 'bg');
   pick('durSeg', 'd', 'duration', Number);
   pick('outSeg', 'out', 'output');
   $('showPrice').addEventListener('change', (e) => { st.showPrice = e.target.checked; save(); build(); });
-  $('music').addEventListener('change', (e) => { st.music = e.target.checked; save(); startAudio(); });
+  drawMusicList();
+  $('musicList').addEventListener('click', (e) => {
+    const play = e.target.closest('[data-play]');
+    if (play) { playSample(play.dataset.play, play); return; }
+    const b = e.target.closest('[data-track]');
+    if (!b) return;
+    st.musicTrack = b.dataset.track;
+    save(); drawMusicList(); startAudio();
+  });
+  $('musicFile').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    if (f.size > 30 * 1048576) { toast('30MB보다 작은 음악 파일을 올려 주세요.'); return; }
+    try {
+      customBuffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(await f.arrayBuffer());
+    } catch { toast('이 음악 파일을 열 수 없어요. MP3나 M4A로 올려 주세요.'); return; }
+    v.customMusic = { name: f.name.replace(/\.[^.]+$/, ''), blob: f };
+    st.musicTrack = 'custom'; st.musicOffset = 0;
+    await db.putVehicle({ ...v, studio: { ...st } });
+    drawMusicList(); startAudio();
+    toast('음악을 넣었어요. 시작 위치를 정할 수 있어요.');
+  });
+  $('musicOffset').addEventListener('input', (e) => { st.musicOffset = Number(e.target.value); drawMusicList(); });
+  $('musicOffset').addEventListener('change', () => { save(); startAudio(); });
   $('cta').addEventListener('input', (e) => { st.cta = e.target.value; save(); build(); });
 
   $('renderBtn').addEventListener('click', async () => {
@@ -658,7 +742,7 @@ async function renderStudio(id) {
     try {
       const fresh = createScene(sceneOpts());
       const { blob, ext } = await recordScene(fresh, {
-        music: st.music,
+        audio: st.musicTrack === 'none' ? null : (ac, dest, d) => playSelected(ac, dest, d, 0),
         onProgress: (p) => { $('veilText').textContent = `영상 만드는 중 ${Math.round(p * 100)}%`; $('veilBar').style.width = `${p * 100}%`; },
       });
       await db.putVehicle({ ...v, studio: { ...st }, videoAt: Date.now(), videoFormat: st.format });
