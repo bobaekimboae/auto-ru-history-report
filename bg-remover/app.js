@@ -1,4 +1,8 @@
 // 매물사진 배경지우개: 사진 목록 관리, 합성(배경·그림자·반사·상사 정보), 다듬기 붓, 저장.
+import {
+  canvas, maskCanvas, findBBox, vgrad, drawBrandStudio, lowerContour, drawShadow, drawReflection, roundRect, SIGN_ZONE, SIGN_FONT,
+} from './compose.js';
+
 const $ = (id) => document.getElementById(id);
 
 const MAX_SIDE = 2560;            // 원본은 긴 변 기준 이 크기로 줄여서 다룬다
@@ -8,7 +12,7 @@ const STORE_KEY = 'bgr-settings-v1';
 const DEFAULTS = {
   bg: 'studio', bgColor: '#dfe6ee', shadow: 60, reflection: false,
   ratio: '4:3', carSize: 84, floorPos: 86,
-  wmOn: false, wmName: '', wmPhone: '', wmLogo: '', wmStyle: 'band',
+  wmOn: false, wmName: '', wmPhone: '', wmLogo: '', wmStyle: 'band', signSub: '',
   prefix: '', format: 'jpg',
 };
 
@@ -127,77 +131,6 @@ async function runQueue() {
   state.busy = false;
 }
 
-// 워커가 준 1채널 마스크를 원본 크기의 알파 캔버스로 만든다.
-function maskCanvas({ width, height, mask }, w, h) {
-  const small = canvas(width, height);
-  const img = small.getContext('2d').createImageData(width, height);
-  for (let i = 0; i < mask.length; i++) {
-    const o = i * 4;
-    img.data[o] = img.data[o + 1] = img.data[o + 2] = 255;
-    // 희미하게 남은 하늘·바닥 얼룩은 버리고, 거의 확실한 부분은 완전히 채운다
-    const a = mask[i];
-    img.data[o + 3] = a < 24 ? 0 : a > 232 ? 255 : Math.round((a - 24) * 255 / 208);
-  }
-  small.getContext('2d').putImageData(img, 0, 0);
-  const out = canvas(w, h);
-  const ctx = out.getContext('2d');
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(small, 0, 0, w, h);
-  return keepMainSubject(out);
-}
-
-// 차량(가장 큰 덩어리)과 그에 맞먹는 덩어리만 남기고, 떨어져 있는 작은 조각은 지운다.
-function keepMainSubject(mask) {
-  const W = mask.width, H = mask.height;
-  const k = Math.min(1, 480 / Math.max(W, H));
-  const w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
-  const small = canvas(w, h);
-  small.getContext('2d').drawImage(mask, 0, 0, w, h);
-  const alpha = small.getContext('2d').getImageData(0, 0, w, h).data;
-  const label = new Int32Array(w * h).fill(-1);
-  const sizes = [];
-  const queue = new Int32Array(w * h);
-  for (let start = 0; start < w * h; start++) {
-    if (label[start] !== -1 || alpha[start * 4 + 3] < 128) continue;
-    const id = sizes.length;
-    let head = 0, tail = 0;
-    queue[tail++] = start; label[start] = id;
-    while (head < tail) {
-      const i = queue[head++];
-      const x = i % w, y = (i - x) / w;
-      const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, y > 0 ? i - w : -1, y < h - 1 ? i + w : -1];
-      for (const n of nb) {
-        if (n >= 0 && label[n] === -1 && alpha[n * 4 + 3] >= 128) { label[n] = id; queue[tail++] = n; }
-      }
-    }
-    sizes.push(tail);
-  }
-  if (!sizes.length) return mask;
-  const biggest = Math.max(...sizes);
-  const keepIds = new Set(sizes.map((n, id) => (n >= biggest * 0.15 ? id : -1)).filter((id) => id >= 0));
-  // 남길 영역을 2px 넓혀서 차체 가장자리의 부드러운 경계는 살린다
-  let keep = new Uint8Array(w * h);
-  for (let i = 0; i < keep.length; i++) keep[i] = keepIds.has(label[i]) ? 1 : 0;
-  for (let pass = 0; pass < 2; pass++) {
-    const grown = keep.slice();
-    for (let i = 0; i < keep.length; i++) {
-      if (keep[i]) continue;
-      const x = i % w;
-      if ((x > 0 && keep[i - 1]) || (x < w - 1 && keep[i + 1]) || keep[i - w] || keep[i + w]) grown[i] = 1;
-    }
-    keep = grown;
-  }
-  const keepImg = small.getContext('2d').createImageData(w, h);
-  for (let i = 0; i < keep.length; i++) keepImg.data[i * 4 + 3] = keep[i] ? 255 : 0;
-  small.getContext('2d').putImageData(keepImg, 0, 0);
-  const ctx = mask.getContext('2d');
-  ctx.globalCompositeOperation = 'destination-in';
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(small, 0, 0, W, H);
-  ctx.globalCompositeOperation = 'source-over';
-  return mask;
-}
-
 function rebuildCut(item) {
   const cut = item.cut || canvas(item.w, item.h);
   const ctx = cut.getContext('2d');
@@ -208,23 +141,6 @@ function rebuildCut(item) {
   ctx.globalCompositeOperation = 'source-over';
   item.cut = cut;
   item.bbox = findBBox(item.mask);
-}
-
-function findBBox(mask) {
-  const step = 2;
-  const w = mask.width, h = mask.height;
-  const data = mask.getContext('2d').getImageData(0, 0, w, h).data;
-  let x0 = w, y0 = h, x1 = -1, y1 = -1;
-  for (let y = 0; y < h; y += step) {
-    for (let x = 0; x < w; x += step) {
-      if (data[(y * w + x) * 4 + 3] > 110) {
-        if (x < x0) x0 = x; if (x > x1) x1 = x;
-        if (y < y0) y0 = y; if (y > y1) y1 = y;
-      }
-    }
-  }
-  if (x1 < 0) return { x: 0, y: 0, w, h };
-  return { x: x0, y: y0, w: Math.min(w, x1 + step) - x0, h: Math.min(h, y1 + step) - y0 };
 }
 
 // ---------- 합성 ----------
@@ -253,6 +169,8 @@ function render(item, target, { compare = false } = {}) {
   let scale = (W * s.carSize / 100) / b.w;
   scale = Math.min(scale, (H * 0.7) / b.h);
   const floorY = H * s.floorPos / 100;
+  // 상사 쇼룸 간판 자리(위쪽 30%)는 비워 두어 사진마다 간판 크기가 같게 한다
+  if (s.bg.startsWith('brand') && (s.wmName.trim() || state.logoImage)) scale = Math.min(scale, (floorY - H * SIGN_ZONE) / b.h);
   const carH = b.h * scale;
   const dx = W / 2 - (b.x + b.w / 2) * scale;
   const dy = floorY - (b.y + b.h) * scale;
@@ -271,12 +189,6 @@ function drawCover(ctx, img, W, H) {
   const k = Math.max(W / iw, H / ih);
   const w = iw * k, h = ih * k;
   ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
-}
-
-function vgrad(ctx, y0, y1, stops) {
-  const g = ctx.createLinearGradient(0, y0, 0, y1);
-  stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c));
-  return g;
 }
 
 function drawBackground(ctx, W, H, horizon) {
@@ -318,6 +230,10 @@ function drawBackground(ctx, W, H, horizon) {
     case 'color':
       ctx.fillStyle = s.bgColor; ctx.fillRect(0, 0, W, H);
       break;
+    case 'brand-light':
+    case 'brand-dark':
+      drawBrandStudio(ctx, W, H, horizon, s.bg === 'brand-dark', { name: s.wmName, sub: s.signSub, logo: state.logoImage });
+      break;
     case 'image':
       if (state.bgImage) drawCover(ctx, state.bgImage, W, H);
       else { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
@@ -327,97 +243,6 @@ function drawBackground(ctx, W, H, horizon) {
   }
 }
 
-// 차량 아랫선(각 열에서 가장 아래 불투명 지점). 3/4 각도 사진도 바퀴마다 높이가 달라 이 선을 따라 그림자를 깐다.
-function lowerContour(item) {
-  if (item._contourFor === item.bbox && item._contour) return item._contour;
-  const { mask, bbox: b } = item;
-  const k = Math.min(1, 400 / b.w);
-  const w = Math.max(2, Math.round(b.w * k)), h = Math.max(2, Math.round(b.h * k));
-  const c = canvas(w, h);
-  c.getContext('2d').drawImage(mask, b.x, b.y, b.w, b.h, 0, 0, w, h);
-  const a = c.getContext('2d').getImageData(0, 0, w, h).data;
-  const raw = new Float32Array(w).fill(NaN);
-  for (let x = 0; x < w; x++) {
-    for (let y = h - 1; y >= 0; y--) {
-      if (a[(y * w + x) * 4 + 3] > 128) { raw[x] = b.y + (y + 1) / k; break; }
-    }
-  }
-  // 튀는 값은 이웃 중앙값으로 눌러 준다
-  const ys = raw.map((v, i) => {
-    if (Number.isNaN(v)) return v;
-    const near = [...raw.slice(Math.max(0, i - 3), i + 4)].filter((n) => !Number.isNaN(n)).sort((m, n) => m - n);
-    return near[near.length >> 1];
-  });
-  const step = 1 / k;
-  const pts = [];
-  ys.forEach((y, i) => { if (!Number.isNaN(y)) pts.push({ x: b.x + (i + 0.5) * step, y }); });
-  // 반사용으로 더 매끈하게 다듬은 선
-  const r = Math.max(3, Math.round(w * 0.03));
-  const smooth = ys.map((v, i) => {
-    if (Number.isNaN(v)) return v;
-    let sum = 0, n = 0;
-    for (let j = Math.max(0, i - r); j <= Math.min(w - 1, i + r); j++) if (!Number.isNaN(ys[j])) { sum += ys[j]; n++; }
-    return sum / n;
-  });
-  item._contour = { pts, smooth, step, x0: b.x };
-  item._contourFor = b;
-  return item._contour;
-}
-
-function drawShadow(ctx, item, scale, dx, dy, carH, k) {
-  const pts = lowerContour(item).pts.map((p) => ({ x: dx + p.x * scale, y: dy + p.y * scale }));
-  if (pts.length < 2) return;
-  const band = (down, up) => {
-    ctx.beginPath();
-    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y + down) : ctx.moveTo(p.x, p.y + down)));
-    for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].y - up);
-    ctx.closePath();
-    ctx.fill();
-  };
-  ctx.save();
-  ctx.fillStyle = '#000';
-  // 넓게 퍼지는 바닥 그림자
-  ctx.globalAlpha = 0.38 * k;
-  ctx.filter = `blur(${carH * 0.045}px)`;
-  band(carH * 0.05, carH * 0.06);
-  // 타이어가 닿는 곳의 진한 접지 그림자
-  ctx.globalAlpha = 0.8 * k;
-  ctx.filter = `blur(${Math.max(1.5, carH * 0.01)}px)`;
-  band(carH * 0.012, carH * 0.03);
-  ctx.restore();
-}
-
-// 바닥 반사: 2px 열마다 아랫선을 기준으로 뒤집어 붙이고 아래로 갈수록 옅게
-function drawReflection(ctx, item, scale, dx, dy, carH) {
-  const b = item.bbox;
-  const { smooth, step, x0: cx0 } = lowerContour(item);
-  const x0 = Math.floor(dx + b.x * scale), x1 = Math.ceil(dx + (b.x + b.w) * scale);
-  const RW = x1 - x0, RH = Math.ceil(carH * 0.45);
-  if (RW < 2 || RH < 2) return;
-  const tmp = canvas(RW, RH);
-  const t = tmp.getContext('2d');
-  const colW = 2, cols = [];
-  for (let X = 0; X < RW; X += colW) {
-    const srcX = (x0 + X - dx) / scale;
-    const idx = Math.min(smooth.length - 1, Math.max(0, Math.floor((srcX + colW / (2 * scale) - cx0) / step)));
-    const yb = smooth[idx];
-    if (Number.isNaN(yb) || yb <= b.y) continue;
-    const dh = (yb - b.y) * scale;
-    t.save();
-    t.translate(X, 0);
-    t.scale(1, -1);
-    t.drawImage(item.cut, srcX, b.y, colW / scale, yb - b.y, 0, -dh, colW, dh);
-    t.restore();
-    cols.push({ X, y: dy + yb * scale });
-  }
-  t.globalCompositeOperation = 'destination-in';
-  const g = t.createLinearGradient(0, 0, 0, RH);
-  g.addColorStop(0, 'rgba(0,0,0,0.22)');
-  g.addColorStop(1, 'rgba(0,0,0,0)');
-  t.fillStyle = g;
-  t.fillRect(0, 0, RW, RH);
-  for (const c of cols) ctx.drawImage(tmp, c.X, 0, colW, RH, x0 + c.X, c.y, colW, RH);
-}
 
 function drawWatermark(ctx, W, H) {
   const s = state.settings;
@@ -468,16 +293,6 @@ function drawWatermark(ctx, W, H) {
   for (const l of lines) { ctx.font = l.f; ctx.fillText(l.t, tx, ty); ty += fs * 1.25; }
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
 // ---------- 화면 갱신 ----------
 const preview = $('preview');
 let rafId = 0;
@@ -508,6 +323,7 @@ function drawStage() {
   const note = $('stageNote');
   if (item.status === 'error') { note.hidden = false; note.textContent = '이 사진은 배경을 지우지 못했어요. 다른 사진으로 다시 올려 주세요.'; }
   else if (state.comparing) { note.hidden = false; note.textContent = '원본 사진'; }
+  else if (state.settings.bg.startsWith('brand') && !state.settings.wmName.trim() && !state.logoImage) { note.hidden = false; note.textContent = '상사 정보에 상사명을 넣으면 벽에 간판이 들어가요'; }
   else if (item.keep) { note.hidden = false; note.textContent = '배경 유지: 비율과 상사 정보만 적용돼요'; }
   else if (state.settings.bg === 'transparent' && state.settings.format === 'jpg') { note.hidden = false; note.textContent = 'JPG는 투명 배경을 저장할 수 없어 흰색으로 저장돼요'; }
   else note.hidden = true;
@@ -702,7 +518,6 @@ async function saveAll() {
 }
 
 // ---------- 유틸 ----------
-function canvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 function cloneCanvas(src) { const c = canvas(src.width, src.height); c.getContext('2d').drawImage(src, 0, 0); return c; }
 function loadImage(url) { return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; }); }
 let toastTimer = 0;
@@ -738,7 +553,7 @@ function applySettingsToUI() {
   $('carSize').value = s.carSize; $('carSizeOut').textContent = `${s.carSize}%`;
   $('floorPos').value = s.floorPos; $('floorPosOut').textContent = `${s.floorPos}%`;
   $('wmOn').checked = s.wmOn; $('wmFields').dataset.off = String(!s.wmOn);
-  $('wmName').value = s.wmName; $('wmPhone').value = s.wmPhone;
+  $('wmName').value = s.wmName; $('wmPhone').value = s.wmPhone; $('signSub').value = s.signSub;
   $('prefix').value = s.prefix;
   const lp = $('logoPreview');
   if (state.logoImage) { lp.replaceChildren(state.logoImage.cloneNode()); $('logoClear').hidden = false; }
@@ -786,8 +601,10 @@ $('ratioSeg').addEventListener('click', (e) => { const b = e.target.closest('[da
 $('wmStyleSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-wm]'); if (b) set({ wmStyle: b.dataset.wm, wmOn: true }); });
 $('formatSeg').addEventListener('click', (e) => { const b = e.target.closest('[data-format]'); if (b) set({ format: b.dataset.format }); });
 $('wmOn').addEventListener('change', (e) => set({ wmOn: e.target.checked }));
-$('wmName').addEventListener('input', (e) => set({ wmName: e.target.value, wmOn: true }));
-$('wmPhone').addEventListener('input', (e) => set({ wmPhone: e.target.value, wmOn: true }));
+const isBrandBg = () => state.settings.bg.startsWith('brand');
+$('wmName').addEventListener('input', (e) => set({ wmName: e.target.value, wmOn: state.settings.wmOn || !isBrandBg() }));
+$('wmPhone').addEventListener('input', (e) => set({ wmPhone: e.target.value, wmOn: state.settings.wmOn || !isBrandBg() }));
+$('signSub').addEventListener('input', (e) => set({ signSub: e.target.value }));
 $('prefix').addEventListener('input', (e) => set({ prefix: e.target.value }));
 $('logoInput').addEventListener('change', async (e) => {
   const f = e.target.files[0];
@@ -796,7 +613,7 @@ $('logoInput').addEventListener('change', async (e) => {
   try {
     const url = await fileToDataUrl(f, 600);
     state.logoImage = await loadImage(url);
-    set({ wmLogo: url, wmOn: true });
+    set({ wmLogo: url, wmOn: state.settings.wmOn || !isBrandBg() });
   } catch { toast('로고 이미지를 열 수 없어요.'); }
 });
 $('logoClear').addEventListener('click', () => { state.logoImage = null; set({ wmLogo: '' }); });
@@ -883,4 +700,5 @@ window.addEventListener('resize', updateStage);
   renderQueue();
   updateStage();
   document.fonts.ready.then(updateStage);
+  document.fonts.load(`800 40px ${SIGN_FONT}`).then(updateStage).catch(() => {});
 })();
