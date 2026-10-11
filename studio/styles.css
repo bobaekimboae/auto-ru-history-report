@@ -407,3 +407,46 @@ a { color: inherit; }
 .sd-del { border: 0; background: none; color: var(--err, #d33); font-size: 12.5px; cursor: pointer; }
 .sd-list input { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; background: var(--surface); color: var(--ink); font-size: 14px; }
 @media (max-width: 760px) { .sd-body { grid-template-columns: 1fr; } .sd-side { max-height: none; } }
+
+/* 촬영 가이드 */
+body.capturing { overflow: hidden; }
+.cap { position: fixed; inset: 0; z-index: 50; background: #000; color: #fff; overflow: hidden; user-select: none; }
+.cap video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cap.no-cam video { display: none; }
+.cap.no-cam::before { content: '카메라를 열 수 없어요. 아래 버튼을 누르면 휴대폰 카메라로 찍어 올릴 수 있어요.'; position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); width: min(80vw, 420px); text-align: center; color: #cfd3d8; }
+.cap.flash::after { content: ''; position: absolute; inset: 0; background: #fff; opacity: .7; }
+.cap-frame { position: absolute; left: 50%; top: 50%; height: min(calc(100vh - 100px), calc(88vw * 3 / 4)); aspect-ratio: 4 / 3; transform: translate(-50%, -50%); border: 2px dashed rgb(255 255 255 / 55%); border-radius: 12px; pointer-events: none; }
+.cap-frame[data-kind="interior"] { border-style: solid; border-color: rgb(255 255 255 / 25%); }
+.cap-frame svg { position: absolute; left: 3%; right: 3%; bottom: 12%; width: 94%; height: auto; fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 10 8; opacity: .85; }
+.cap-frame[data-kind="diag"]::after { content: '차 전체가 점선 안에 들어오게'; position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 13px; color: rgb(255 255 255 / 80%); }
+.cap-frame::before { content: ''; position: absolute; left: 4%; right: 4%; bottom: 14%; border-top: 2px solid rgb(255 214 0 / 75%); }
+.cap-frame[data-kind="interior"]::before { display: none; }
+.cap-level { position: absolute; left: 50%; top: 50%; width: 120px; height: 2px; transform: translate(-50%, -50%); pointer-events: none; }
+.cap-level span { display: block; height: 3px; background: #ffd400; border-radius: 2px; transition: transform .1s; }
+.cap-level[data-ok="true"] span { background: #3fd07f; }
+.cap-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 12px; padding: max(10px, env(safe-area-inset-top)) 14px 10px; background: linear-gradient(rgb(0 0 0 / 65%), transparent); }
+.cap-title { flex: 1; display: flex; flex-direction: column; text-align: center; }
+.cap-title strong { font-size: 18px; }
+.cap-title span { font-size: 13px; color: #d6dadf; }
+.cap-count { font-size: 13px; padding: 4px 8px; border-radius: 999px; background: rgb(255 255 255 / 18%); }
+.cap-btn { min-width: 64px; height: 38px; padding: 0 14px; border: 1px solid rgb(255 255 255 / 40%); border-radius: 999px; background: rgb(0 0 0 / 35%); color: #fff; font-weight: 600; cursor: pointer; }
+.cap-btn:disabled { opacity: .4; }
+.cap-primary { background: #df5419; border-color: #df5419; }
+.cap-bottom { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: space-around; padding: 14px 14px max(16px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgb(0 0 0 / 65%)); }
+.cap-shutter { width: 72px; height: 72px; border-radius: 50%; border: 5px solid #fff; background: rgb(255 255 255 / 25%); cursor: pointer; }
+.cap-shutter:active { background: #fff; }
+.cap-map { position: absolute; left: 14px; bottom: 104px; width: 110px; height: 110px; border-radius: 50%; background: rgb(0 0 0 / 45%); }
+.cap-map .car { fill: rgb(255 255 255 / 15%); stroke: #fff; stroke-width: 1.5; }
+.cap-map .nose { stroke: #fff; stroke-width: 2; }
+.cap-map .todo { fill: rgb(255 255 255 / 35%); }
+.cap-map .ok { fill: #3fd07f; }
+.cap-map .cur { fill: #ffd400; }
+.cap-map .ray { stroke: #ffd400; stroke-width: 2; stroke-dasharray: 3 3; }
+.cap-rotate { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); padding: 10px 16px; border-radius: 10px; background: rgb(0 0 0 / 70%); font-weight: 700; }
+.cap-check { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px; background: rgb(0 0 0 / 88%); }
+.cap-check img { max-width: 92vw; max-height: 62vh; border-radius: 8px; }
+.cap-check p { margin: 0; text-align: center; font-weight: 600; color: #ffd400; }
+.cap-check p[data-ok="true"] { color: #3fd07f; }
+.cap-check div { display: flex; gap: 12px; }
+.cap-open { margin-top: 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; height: auto; padding: 10px; }
+.cap-open small { font-weight: 400; color: var(--muted); }
