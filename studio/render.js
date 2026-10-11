@@ -3,6 +3,7 @@ import { playMusic } from './music.js';
 
 export const FORMATS = {
   '9:16': { w: 1080, h: 1920, label: '세로 9:16', hint: '릴스·쇼츠·틱톡' },
+  '4:5': { w: 1080, h: 1350, label: '세로 4:5', hint: '인스타 피드·캐러셀' },
   '1:1': { w: 1080, h: 1080, label: '정사각 1:1', hint: '인스타 피드' },
   '16:9': { w: 1920, h: 1080, label: '가로 16:9', hint: '유튜브·매물 상세' },
 };
@@ -75,15 +76,52 @@ function makeBlurred(img, W, H) {
   return c;
 }
 
+// 템플릿마다 첫 장면·마지막 장면 길이와 사진 한 컷 길이
+function pacing(template) {
+  return {
+    introD: template === 'dynamic' ? 1.8 : 2.4,
+    outroD: template === 'luxury' ? 3.4 : 3.0,
+    perShot: template === 'dynamic' ? 1.15 : template === 'luxury' ? 2.2 : 1.6,
+  };
+}
+
 // 템플릿·길이·사진 수로 장면 길이와 사진 컷 수를 정한다.
 function timeline(template, D, nImages) {
-  const introD = template === 'dynamic' ? 1.8 : 2.4;
-  const outroD = template === 'luxury' ? 3.4 : 3.0;
+  const { introD, outroD, perShot } = pacing(template);
   const shotsSpan = Math.max(1, D - introD - outroD);
   const poolLen = nImages > 1 ? nImages - 1 : 1;
-  const perShot = template === 'dynamic' ? 1.15 : template === 'luxury' ? 2.2 : 1.6;
   const count = Math.max(1, Math.min(Math.round(shotsSpan / perShot), Math.max(poolLen, Math.ceil(shotsSpan / 3))));
   return { introD, outroD, shotD: shotsSpan / count, count };
+}
+
+/**
+ * 사진 슬라이드(틱톡 사진 게시물·인스타 캐러셀) 계획: 표지 1장 + 사진마다 1장 + 마무리 1장.
+ * 사진을 모두 한 번씩 보여주는 길이의 장면을 만들고, 장면마다 글자가 다 나온 순간을 찍는다.
+ */
+export function slidePlan(template, nImages, maxSlides = 35) {
+  const n = Math.max(1, Math.min(nImages, maxSlides - 1));
+  const { introD, outroD, perShot } = pacing(template);
+  const duration = introD + outroD + perShot * Math.max(1, n - 1);
+  const { shotD, count } = timeline(template, duration, n);
+  const times = [introD * 0.88];
+  for (let i = 0; i < count; i++) times.push(introD + (i + 0.55) * shotD);
+  times.push(duration - 0.35);
+  return { duration, times, photos: n };
+}
+
+/** 장면을 정해진 순간마다 JPG로 찍는다. */
+export async function renderSlides(scene, times, { onProgress } = {}) {
+  const c = document.createElement('canvas');
+  c.width = scene.W; c.height = scene.H;
+  const ctx = c.getContext('2d');
+  const out = [];
+  for (let i = 0; i < times.length; i++) {
+    scene.draw(ctx, times[i]);
+    out.push(await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.92)));
+    onProgress?.(i + 1, times.length);
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  return out;
 }
 
 /** 영상에 실제로 나오는 사진 번호들(대표 사진 포함). 배경 지우기를 이 사진들에만 하려고 쓴다. */
