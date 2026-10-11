@@ -8,6 +8,7 @@ import { openPlateEditor } from './plate-ui.js';
 import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
 import { createTurntableScene, isSpinPhoto } from './turntable.js';
 import { renderShowroom3D } from './showroom3d.js';
+import { VOICES, NARR_DELAY, writeScript, speak, toBuffer } from './narration.js';
 import { LISTING_SIZES, autoToneFilter, sharpen, drawCover, drawBanner } from './enhance.js';
 import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
 
@@ -17,7 +18,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천', signSub: '' };
-const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0, plate: 'off', photoSize: '4:3', enhance: true, sharpen: true, banner: true };
+const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0, plate: 'off', photoSize: '4:3', enhance: true, sharpen: true, banner: true, narr: false, voice: 'F1', narrSpeed: 1.05 };
 const BACKGROUNDS = {
   orig: { label: '원본 사진', hint: '찍은 사진 그대로' },
   'brand-light': { label: '화이트 쇼룸', hint: '밝고 깨끗한 기본', theme: 'light' },
@@ -540,6 +541,21 @@ async function renderStudio(id) {
           <label class="switch"><input type="checkbox" id="showPrice" ${st.showPrice ? 'checked' : ''}><span class="track"></span>가격 보여주기</label>
           <div class="field"><label for="cta">마지막 장면 문구</label><input id="cta" value="${esc(st.cta)}" maxlength="24" placeholder="예: 지금 바로 문의하세요"></div>
         </div>
+        <div class="group" id="narrGroup">
+          <h3>AI 나레이션</h3>
+          <label class="switch"><input type="checkbox" id="narrSw" ${st.narr ? 'checked' : ''}><span class="track"></span>차량 설명을 AI 목소리로 읽어 주기</label>
+          <div id="narrBody" ${st.narr ? '' : 'hidden'}>
+            <div class="field"><label for="narrText">대본 <small>한 줄에 한 문장 · 고쳐 써도 돼요</small></label><textarea id="narrText" rows="7"></textarea></div>
+            <div class="narr-row">
+              <button type="button" class="btn btn-quiet btn-sm" id="narrRewrite">대본 다시 쓰기</button>
+              <label class="sr-only" for="narrVoice">목소리</label>
+              <select id="narrVoice">${VOICES.map(([k, l]) => `<option value="${k}" ${k === st.voice ? 'selected' : ''}>${l}</option>`).join('')}</select>
+              <select id="narrSpeed" aria-label="말 빠르기">${[[0.95, '천천히'], [1.05, '보통'], [1.15, '빠르게'], [1.25, '아주 빠르게']].map(([k, l]) => `<option value="${k}" ${k === st.narrSpeed ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm btn-block" id="narrMake">음성 만들기</button>
+            <p class="hint" id="narrHint"></p>
+          </div>
+        </div>
         <div class="group" id="musicGroup">
           <h3>배경음악</h3>
           <ul class="music-list" id="musicList"></ul>
@@ -593,11 +609,12 @@ async function renderStudio(id) {
     const isSpin = st.output === 'turntable';
     $('durGroup').hidden = isSlides;
     $('musicGroup').hidden = isSlides;
+    $('narrGroup').hidden = isSlides || st.output === 'photos';
     const isPhotos = st.output === 'photos';
     $('tplGroup').hidden = isSpin || isPhotos;
     $('fmtGroup').hidden = isPhotos;
     $('photoGroup').hidden = !isPhotos;
-    if (isPhotos) { $('durGroup').hidden = true; $('musicGroup').hidden = true; }
+    if (isPhotos) { $('durGroup').hidden = true; $('musicGroup').hidden = true; $('narrGroup').hidden = true; }
     // 턴테이블에 쓸 사진 고르기(계기판처럼 잘못 들어간 사진을 뺀다)
     $('spinPick').hidden = !isSpin;
     if (isSpin) {
@@ -826,6 +843,7 @@ async function renderStudio(id) {
     if (playing) restart();
     else pausedAt = Math.min(pausedAt, effD() - 0.01);
     syncOutputUI();
+    narrStatusHook();
   };
   // 고른 배경음악을 dest로 튼다. offset은 영상 안에서의 시작 시점(미리보기 중간부터 들을 때)
   const styleOf = (id) => (id === 'auto' || id === 'custom' ? st.template : id);
@@ -833,6 +851,28 @@ async function renderStudio(id) {
     if (st.musicTrack === 'none') return null;
     if (st.musicTrack === 'custom' && customBuffer) return playBuffer(ac, dest, customBuffer, duration, st.musicOffset + offset);
     return playMusic(ac, dest, styleOf(st.musicTrack), duration);
+  };
+  // 나레이션 + 배경음악: 나레이션이 있으면 음악을 낮춘다
+  let narrStatusHook = () => {};
+  let narrBuf = v.narration?.pcm ? toBuffer(v.narration) : null;
+  const narrOn = () => st.narr && !!narrBuf;
+  const playMix = (ac, dest, duration, offset = 0) => {
+    const mg = ac.createGain();
+    mg.gain.value = narrOn() ? 0.3 : 1;
+    mg.connect(dest);
+    const music = playSelected(ac, mg, duration, offset);
+    let src = null;
+    if (narrOn()) {
+      src = ac.createBufferSource();
+      src.buffer = narrBuf;
+      const g = ac.createGain(); g.gain.value = 1.15;
+      src.connect(g).connect(dest);
+      const wait = NARR_DELAY - offset;
+      if (wait >= 0) src.start(ac.currentTime + wait);
+      else if (-wait < narrBuf.duration) src.start(ac.currentTime, -wait);
+      else src = null;
+    }
+    return { stop() { music?.stop?.(); try { src?.stop(); } catch { /* 이미 끝남 */ } } };
   };
   let sample = null;
   const stopSample = () => { clearTimeout(sample?.timer); sample?.track?.stop(); sample?.ac.close(); sample = null; document.querySelectorAll('.mplay[aria-pressed="true"]').forEach((b) => { b.setAttribute('aria-pressed', 'false'); b.textContent = '▶'; }); };
@@ -872,7 +912,7 @@ async function renderStudio(id) {
     if (!soundOn || !playing) return;
     const ac = new AudioContext();
     const offset = currentTime();
-    audio = { ctx: ac, track: playSelected(ac, ac.destination, Math.max(0.5, effD() - offset), offset) };
+    audio = { ctx: ac, track: playMix(ac, ac.destination, Math.max(0.5, effD() - offset), offset) };
   };
   const currentTime = () => (playing ? ((performance.now() - t0) / 1000) % effD() : pausedAt);
   const restart = () => { t0 = performance.now(); pausedAt = 0; startAudio(); };
@@ -990,6 +1030,47 @@ async function renderStudio(id) {
     drawMusicList(); startAudio();
     toast('음악을 넣었어요. 시작 위치를 정할 수 있어요.');
   });
+  // ---------- AI 나레이션 ----------
+  let variant = 0;
+  const scriptNow = () => writeScript(v, dealer, { showPrice: st.showPrice, cta: st.cta, variant }).join('\n');
+  $('narrText').value = v.narration?.text ?? scriptNow();
+  narrStatusHook = () => narrStatus();
+  const narrStatus = () => {
+    const h = $('narrHint');
+    if (!st.narr) return;
+    if (!narrBuf) { h.textContent = '대본을 확인하고 "음성 만들기"를 누르세요. 처음 한 번은 음성 AI(약 260MB)를 내려받아요. 와이파이에서 하세요.'; return; }
+    const end = NARR_DELAY + narrBuf.duration;
+    const changed = v.narration && ($('narrText').value !== v.narration.text || st.voice !== v.narration.voice || st.narrSpeed !== v.narration.speed);
+    h.textContent = `나레이션 ${narrBuf.duration.toFixed(1)}초 · 영상 ${Math.round(effD())}초${changed ? ' · 대본이나 목소리를 바꿨어요. "음성 만들기"를 다시 누르세요.' : ''}`;
+    if (end > effD() - 0.5) h.textContent += st.duration < 30 && st.output !== 'turntable' ? ' · 나레이션이 영상보다 길어요. 길이를 30초로 바꾸거나 대본을 줄이세요.' : ' · 나레이션이 영상보다 길어요. 대본을 줄이거나 빠르게 읽게 하세요.';
+  };
+  narrStatus();
+  $('narrSw').addEventListener('change', (e) => { st.narr = e.target.checked; $('narrBody').hidden = !st.narr; save(); narrStatus(); startAudio(); });
+  $('narrRewrite').addEventListener('click', () => { variant++; $('narrText').value = scriptNow(); narrStatus(); });
+  $('narrText').addEventListener('input', narrStatus);
+  $('narrVoice').addEventListener('change', (e) => { st.voice = e.target.value; save(); narrStatus(); });
+  $('narrSpeed').addEventListener('change', (e) => { st.narrSpeed = Number(e.target.value); save(); narrStatus(); });
+  $('narrMake').addEventListener('click', async () => {
+    const text = $('narrText').value.trim();
+    if (!text) { toast('대본을 써 주세요.'); return; }
+    setPlaying(false);
+    try {
+      veilShow('음성 AI 준비 중', 0);
+      const n = await speak(text, { voice: st.voice, speed: st.narrSpeed, onProgress: (p) => {
+        if (p.kind === 'model') veilShow(`음성 AI 내려받는 중 ${Math.round(p.ratio * 100)}% (처음 한 번만)`, p.ratio);
+        else veilShow(`나레이션 만드는 중 ${p.i + 1} / ${p.n} 문장`, p.i / p.n);
+      } });
+      v.narration = { text, voice: st.voice, speed: st.narrSpeed, pcm: n.pcm, sr: n.sr, starts: n.starts, durs: n.durs };
+      narrBuf = toBuffer(v.narration);
+      await db.putVehicle({ ...v, studio: { ...st } });
+      narrStatus();
+      toast('나레이션을 만들었어요. 소리를 켜고 미리보기로 들어 보세요.');
+      if (!soundOn) $('soundBtn').click(); else startAudio();
+      restart(); setPlaying(true);
+    } catch (err) {
+      toast(`나레이션을 만들지 못했어요: ${err.message}`);
+    } finally { $('veil').hidden = true; }
+  });
   $('musicOffset').addEventListener('input', (e) => { st.musicOffset = Number(e.target.value); drawMusicList(); });
   $('musicOffset').addEventListener('change', () => { save(); startAudio(); });
   $('cta').addEventListener('input', (e) => { st.cta = e.target.value; save(); build(); });
@@ -1004,7 +1085,7 @@ async function renderStudio(id) {
     try {
       const fresh = makeScene();
       const { blob, ext } = await recordScene(fresh, {
-        audio: st.musicTrack === 'none' ? null : (ac, dest, d) => playSelected(ac, dest, d, 0),
+        audio: st.musicTrack === 'none' && !narrOn() ? null : (ac, dest, d) => playMix(ac, dest, d, 0),
         onProgress: (p) => { $('veilText').textContent = `영상 만드는 중 ${Math.round(p * 100)}%`; $('veilBar').style.width = `${p * 100}%`; },
       });
       await db.putVehicle({ ...v, studio: { ...st }, videoAt: Date.now(), videoFormat: st.format });
