@@ -5,6 +5,8 @@ import { playMusic, playBuffer, MUSIC_TRACKS } from './music.js';
 import { makeMask, loadCutout, composeShowroom, looksLikeInterior } from './showroom.js';
 import { detectPlate, isExterior, applyPlate, dealerPlateCanvas, PLATE_MODES } from './plate.js';
 import { openPlateEditor } from './plate-ui.js';
+import { openSpotEditor } from './spots-ui.js';
+import { spotToImage, drawSpot } from './spots.js';
 import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
 import { createTurntableScene, isSpinPhoto } from './turntable.js';
 import { renderShowroom3D } from './showroom3d.js';
@@ -350,12 +352,14 @@ async function renderEditor(id) {
         ${i === 0 ? '<span class="pcover">대표</span>' : ''}
         ${p.keepBg ? '<span class="pkeep">실내 · 배경 유지</span>' : ''}
         ${p.plate ? '<span class="pplate">번호판 표시됨</span>' : ''}
+        ${p.spots?.length ? `<span class="pspots">핫스팟 ${p.spots.length}</span>` : ''}
         <div class="ptools">
           <button type="button" data-act="left" aria-label="앞으로" ${i === 0 ? 'disabled' : ''}>◀</button>
           ${i ? '<button type="button" data-act="cover">대표로</button>' : ''}
           <button type="button" data-act="right" aria-label="뒤로" ${i === photos.length - 1 ? 'disabled' : ''}>▶</button>
           <button type="button" data-act="keep" aria-pressed="${!!p.keepBg}" title="상사 쇼룸 배경을 쓸 때 이 사진은 배경을 지우지 않아요">실내</button>
           <button type="button" data-act="plate" title="번호판 위치를 맞춰요">번호판</button>
+          <button type="button" data-act="spots" title="특징·흠집 위치를 표시해요">핫스팟${p.spots?.length ? ` ${p.spots.length}` : ''}</button>
           <button type="button" data-act="del" aria-label="삭제">삭제</button>
         </div>
       </li>`).join('');
@@ -386,6 +390,7 @@ async function renderEditor(id) {
     if (b.dataset.act === 'cover') move(i, 0);
     if (b.dataset.act === 'del') photos.splice(i, 1);
     if (b.dataset.act === 'keep') photos[i] = { ...photos[i], keepBg: !photos[i].keepBg };
+    if (b.dataset.act === 'spots') { openSpotEditor({ photos, urls: photos.map((x) => photoUrl(x)), start: i, onDone: () => drawPhotos() }); return; }
     if (b.dataset.act === 'plate') {
       const p = photos[i];
       const open = () => openPlateEditor({ photos, urls: photos.map((x) => photoUrl(x)), start: i, onDone: () => drawPhotos() });
@@ -539,6 +544,7 @@ async function renderStudio(id) {
         <div class="group">
           <h3>내용</h3>
           <label class="switch"><input type="checkbox" id="showPrice" ${st.showPrice ? 'checked' : ''}><span class="track"></span>가격 보여주기</label>
+          <button type="button" class="btn btn-quiet btn-sm" id="spotBtn">핫스팟(특징·흠집) 표시 ${v.photos.reduce((n, p) => n + (p.spots?.length || 0), 0) || ''}</button>
           <div class="field"><label for="cta">마지막 장면 문구</label><input id="cta" value="${esc(st.cta)}" maxlength="24" placeholder="예: 지금 바로 문의하세요"></div>
         </div>
         <div class="group" id="narrGroup">
@@ -756,12 +762,13 @@ async function renderStudio(id) {
   const listingPhoto = async (p, i) => {
     const { w: W, h: H } = LISTING_SIZES[st.photoSize] || LISTING_SIZES['4:3'];
     const showroom = bgNow() !== 'orig' && p.maskBlob && !p.keepBg;
-    const key = [p.id, plateKey(p), showroom ? bgNow() : 'orig', st.photoSize, st.enhance, st.sharpen, st.banner, st.showPrice, dealer.color, dealer.name, dealer.phone].join('|');
+    const key = [p.id, JSON.stringify(p.spots || []), plateKey(p), showroom ? bgNow() : 'orig', st.photoSize, st.enhance, st.sharpen, st.banner, st.showPrice, dealer.color, dealer.name, dealer.phone].join('|');
     if (listingCache.has(key)) return listingCache.get(key);
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const x = c.getContext('2d');
     x.imageSmoothingQuality = 'high';
+    let place = null;   // 원본 사진 좌표 → 매물 사진 좌표(핫스팟용)
     if (showroom) {
       const ck = `${p.id}|${plateKey(p)}`;
       if (!cutouts.has(ck)) cutouts.set(ck, await loadCutout(baseOf(p, i), p.maskBlob));
@@ -773,12 +780,19 @@ async function renderStudio(id) {
         const ex = e.getContext('2d'); ex.filter = f; ex.drawImage(item.cut, 0, 0);
         item = { ...item, cut: e };
       }
-      x.drawImage(composeShowroom(item, W, H, themeOf(bgNow()), { name: dealer.name, sub: dealer.signSub, logo }, await get3D(W, H)), 0, 0);
+      const comp = composeShowroom(item, W, H, themeOf(bgNow()), { name: dealer.name, sub: dealer.signSub, logo }, await get3D(W, H));
+      x.drawImage(comp, 0, 0);
+      place = (sp) => spotToImage(comp, sp);
     } else {
       const base = baseOf(p, i);
       drawCover(x, base, W, H, st.enhance ? autoToneFilter(base) : 'none');
+      const k = Math.max(W / base.width, H / base.height);
+      place = (sp) => [(W - base.width * k) / 2 + sp.x * base.width * k, (H - base.height * k) / 2 + sp.y * base.height * k];
     }
     if (st.sharpen) sharpen(c, 0.4);
+    if (p.spots?.length) {
+      p.spots.forEach((sp) => { const [sx, sy] = place(sp); drawSpot(x, sx, sy, sp, Math.min(W, H) / 100, { side: sx < W / 2 ? 1 : -1, W }); });
+    }
     if (st.banner) drawBanner(x, W, H, { dealer, logo, vehicle: v, showPrice: st.showPrice });
     listingCache.set(key, c);
     return c;
@@ -823,7 +837,7 @@ async function renderStudio(id) {
   const makeScene = () => (st.output === 'photos' ? listingScene() : st.output === 'turntable' && spinItems.length
     ? createTurntableScene({ items: spinItems, bg3d: spin3d, theme: themeOf(bgNow()), sign: { name: dealer.name, sub: dealer.signSub, logo }, vehicle: v, dealer: { ...dealer, cta: st.cta }, format: st.format, duration: effD(), showPrice: st.showPrice })
     : createScene(sceneOpts()));
-  const sceneOpts = () => ({ vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: effD(), showPrice: st.showPrice });
+  const sceneOpts = () => ({ spots: v.photos.map((p) => p.spots || []), vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: effD(), showPrice: st.showPrice });
   let buildToken = 0;
   const build = async () => {
     const token = ++buildToken;
@@ -981,6 +995,14 @@ async function renderStudio(id) {
   $('tplOpts').addEventListener('click', () => drawMusicList());
   pick('bgOpts', 'bg', 'bg');
   pick('plateSeg', 'plate', 'plate');
+  $('spotBtn').addEventListener('click', () => {
+    setPlaying(false);
+    openSpotEditor({ photos: v.photos, urls: v.photos.map((p) => photoUrl(p)), start: 0, onDone: async () => {
+      await db.putVehicle({ ...v, studio: { ...st } });
+      $('spotBtn').textContent = `핫스팟(특징·흠집) 표시 ${v.photos.reduce((n, p) => n + (p.spots?.length || 0), 0) || ''}`;
+      build(); setPlaying(true);
+    } });
+  });
   $('plateEditBtn').addEventListener('click', () => {
     const urls = v.photos.map((p) => photoUrl(p));
     const indices = v.photos.map((p, i) => i).filter((i) => !v.photos[i].keepBg);
