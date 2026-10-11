@@ -1,6 +1,6 @@
 // 상사 쇼룸 합성: 배경지우개의 AI 워커와 합성 도구를 그대로 써서, 차량을 가상 쇼룸에 세운 사진을 영상 비율로 만든다.
 import {
-  canvas, maskCanvas, findBBox, drawBrandStudio, drawShadow, drawReflection, SIGN_ZONE,
+  canvas, maskCanvas, findBBox, fillHoles, drawBrandStudio, drawShadow, drawReflection, SIGN_ZONE,
 } from '../bg-remover/compose.js';
 
 let worker = null;
@@ -57,6 +57,7 @@ export async function loadCutout(photoBitmap, maskBlob) {
   const mb = await createImageBitmap(maskBlob);
   mask.getContext('2d').drawImage(mb, 0, 0, w, h);
   mb.close();
+  fillHoles(mask);
   const cut = canvas(w, h);
   const c = cut.getContext('2d');
   c.drawImage(photoBitmap, 0, 0);

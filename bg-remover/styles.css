@@ -163,9 +163,9 @@ h1, h2, h3, p { margin: 0; }
 .brush-size { display: inline-flex; align-items: center; padding: 0 4px; }
 .brush-size input { width: 84px; }
 
-.canvas-wrap { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; padding: 24px; overflow: hidden; }
+.canvas-wrap { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: hidden; }
 #preview {
-  max-width: 100%; max-height: 100%; width: auto; height: auto; display: block;
+  max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; min-width: 0; min-height: 0; flex: none;
   border-radius: 4px; box-shadow: var(--shadow);
   background-color: var(--checker-a);
   background-image: conic-gradient(var(--checker-b) 25%, transparent 0 50%, var(--checker-b) 0 75%, transparent 0);

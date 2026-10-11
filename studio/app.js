@@ -3,10 +3,11 @@ import { db } from './db.js';
 import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards, usedPhotoIndices, slidePlan, renderSlides } from './render.js';
 import { playMusic, playBuffer, MUSIC_TRACKS } from './music.js';
 import { makeMask, loadCutout, composeShowroom, looksLikeInterior } from './showroom.js';
-import { detectPlate, applyPlate, dealerPlateCanvas, PLATE_MODES } from './plate.js';
+import { detectPlate, isExterior, applyPlate, dealerPlateCanvas, PLATE_MODES } from './plate.js';
 import { openPlateEditor } from './plate-ui.js';
 import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
 import { createTurntableScene, isSpinPhoto } from './turntable.js';
+import { LISTING_SIZES, autoToneFilter, sharpen, drawCover, drawBanner } from './enhance.js';
 import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
 
 const $ = (id) => document.getElementById(id);
@@ -15,7 +16,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천', signSub: '' };
-const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0, plate: 'off' };
+const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video', musicTrack: 'auto', musicOffset: 0, plate: 'off', photoSize: '4:3', enhance: true, sharpen: true, banner: true };
 const BACKGROUNDS = {
   orig: { label: '원본 사진', hint: '찍은 사진 그대로' },
   'brand-light': { label: '화이트 쇼룸', hint: '밝고 깨끗한 기본', theme: 'light' },
@@ -480,14 +481,24 @@ async function renderStudio(id) {
         <div class="group">
           <h3>만들 것</h3>
           <div class="seg seg-wide" id="outSeg">
-            <button type="button" data-out="video" aria-selected="${st.output === 'video'}">영상 (MP4)</button>
+            <button type="button" data-out="video" aria-selected="${st.output === 'video'}">영상</button>
             <button type="button" data-out="turntable" aria-selected="${st.output === 'turntable'}">턴테이블</button>
-            <button type="button" data-out="slides" aria-selected="${st.output === 'slides'}">사진 슬라이드</button>
+            <button type="button" data-out="slides" aria-selected="${st.output === 'slides'}">슬라이드</button>
+            <button type="button" data-out="photos" aria-selected="${st.output === 'photos'}">매물 사진</button>
           </div>
           <p class="hint" id="outHint"></p>
           <div class="spin-pick" id="spinPick" hidden></div>
         </div>
-        <div class="group">
+        <div class="group" id="photoGroup">
+          <h3>매물 사진</h3>
+          <div class="seg seg-wide" id="sizeSeg">
+            ${Object.entries(LISTING_SIZES).map(([k, z]) => `<button type="button" data-size="${k}" aria-selected="${k === st.photoSize}" title="${z.hint}">${z.label}</button>`).join('')}
+          </div>
+          <label class="switch"><input type="checkbox" id="enhanceSw" ${st.enhance ? 'checked' : ''}><span class="track"></span>자동 보정 (밝기·대비·색감)</label>
+          <label class="switch"><input type="checkbox" id="sharpenSw" ${st.sharpen ? 'checked' : ''}><span class="track"></span>선명하게</label>
+          <label class="switch"><input type="checkbox" id="bannerSw" ${st.banner ? 'checked' : ''}><span class="track"></span>상사 배너 (상사명·가격·연락처)</label>
+        </div>
+        <div class="group" id="fmtGroup">
           <h3>형식</h3>
           <div class="opts" id="formatOpts">${Object.entries(FORMATS).map(([k, f]) => `
             <button type="button" class="opt" data-format="${k}" aria-pressed="${k === st.format}">
@@ -570,7 +581,9 @@ async function renderStudio(id) {
   const save = () => db.putVehicle({ ...v, studio: { ...st } });
   // 사진 슬라이드는 사진을 모두 한 번씩 보여주는 길이로 미리보기·배경 지우기를 한다
   const slides = () => slidePlan(st.template, v.photos.length);
-  const effD = () => (st.output === 'slides' ? slides().duration : st.duration);
+  const PHOTO_HOLD = 1.6;
+  const effD = () => (st.output === 'slides' ? slides().duration : st.output === 'photos' ? Math.max(2, listing.length * PHOTO_HOLD) : st.duration);
+  let listing = [];
   // 턴테이블은 배경을 지운 차가 있어야 해서 "원본 사진"을 골라도 화이트 쇼룸으로 만든다
   const bgNow = () => (st.output === 'turntable' && st.bg === 'orig' ? 'brand-light' : st.bg);
   const MAX_SPIN = 12;
@@ -579,17 +592,22 @@ async function renderStudio(id) {
     const isSpin = st.output === 'turntable';
     $('durGroup').hidden = isSlides;
     $('musicGroup').hidden = isSlides;
-    $('tplGroup').hidden = isSpin;
+    const isPhotos = st.output === 'photos';
+    $('tplGroup').hidden = isSpin || isPhotos;
+    $('fmtGroup').hidden = isPhotos;
+    $('photoGroup').hidden = !isPhotos;
+    if (isPhotos) { $('durGroup').hidden = true; $('musicGroup').hidden = true; }
     // 턴테이블에 쓸 사진 고르기(계기판처럼 잘못 들어간 사진을 뺀다)
     $('spinPick').hidden = !isSpin;
     if (isSpin) {
       $('spinPick').innerHTML = v.photos.map((p, i) => (isSpinPhoto(p) ? `<button type="button" data-spin="${i}" aria-pressed="${!p.noSpin}" title="눌러서 턴테이블에서 빼거나 넣기"><img src="${photoUrl(p)}" alt="사진 ${i + 1}"><span class="num">${i + 1}</span></button>` : '')).join('');
     }
-    $('renderBtn').textContent = isSlides ? `사진 슬라이드 만들기 (${slides().times.length}장)` : isSpin ? '턴테이블 영상 만들기' : '영상 만들기';
+    $('renderBtn').textContent = isSlides ? `사진 슬라이드 만들기 (${slides().times.length}장)` : isSpin ? '턴테이블 영상 만들기' : isPhotos ? `매물 사진 ${listing.length}장 저장` : '영상 만들기';
     $('renderHint').textContent = isSlides
       ? '표지·사진마다 한 장·마무리 한 장으로 만들어요. 틱톡 사진 게시물은 최대 35장이고 음악은 틱톡에서 고르면 돼요.'
       : '만드는 동안 영상 길이만큼 시간이 걸려요. 이 탭을 그대로 두세요.';
-    $('outHint').textContent = isSlides ? '넘겨 보는 사진 게시물(틱톡 사진 모드·인스타 캐러셀)용 이미지를 만들어요.'
+    if (isPhotos) $('renderHint').textContent = '매물 등록용 사진을 보정해 한 번에 ZIP으로 저장해요. 실내 사진은 배경을 그대로 두고 보정만 해요.';
+    $('outHint').textContent = isPhotos ? '보배드림·엔카·첫차에 올릴 매물 사진을 보정·쇼룸 배경·번호판 가리기·상사 배너까지 한 번에 만들어요.' : isSlides ? '넘겨 보는 사진 게시물(틱톡 사진 모드·인스타 캐러셀)용 이미지를 만들어요.'
       : isSpin ? `쇼룸 회전 무대 위에서 차가 돌아가는 영상이에요. 외관 사진 ${spinCount}장을 사진 순서대로 돌려요(앞 → 사선 → 옆 → 뒤 순서로 놓으면 자연스러워요). 미리보기를 손으로 끌면 360°로 돌려볼 수 있어요.` : '';
   };
 
@@ -600,9 +618,18 @@ async function renderStudio(id) {
   const composites = new Map();
   const veilShow = (text, ratio) => { $('veil').hidden = false; $('veilText').textContent = text; $('veilBar').style.width = `${Math.round((ratio || 0) * 100)}%`; };
   // 영상에 나오는 사진. 턴테이블은 외관 사진을 모두 쓴다
-  const usedSet = () => new Set(st.output === 'turntable' ? v.photos.map((_, i) => i).slice(0, MAX_SPIN * 2) : usedPhotoIndices(st.template, effD(), v.photos.length));
+  const usedSet = () => new Set(st.output === 'turntable' || st.output === 'photos' ? v.photos.map((_, i) => i).slice(0, MAX_SPIN * 2) : usedPhotoIndices(st.template, effD(), v.photos.length));
   let spinCount = 0;
   let spinItems = [];
+  const photoIsInterior = async (p) => {
+    if (p.exterior === undefined) {
+      try { p.exterior = await isExterior(p.blob, { onProgress: (r) => veilShow(`사진 판별 AI 준비 중 ${Math.round(r * 100)}%`, r) }); }
+      catch { p.exterior = null; }
+    }
+    if (p.exterior === false) return true;
+    if (p.exterior === true) return false;
+    return p.maskBlob ? looksLikeInterior(p.maskBlob) : false;
+  };
   const ensureMasks = async () => {
     // 영상에 나오는 사진만 배경을 지운다(사진이 많은 매물도 빨리 끝나게)
     const used = usedSet();
@@ -615,8 +642,8 @@ async function renderStudio(id) {
         p.maskBlob = await makeMask(p.blob, images[i].width, images[i].height, {
           onProgress: (r) => veilShow(`AI 준비 중 ${Math.round(r * 100)}% (처음 한 번만 내려받아요)`, r),
         });
-        // 화면 가장자리를 두 곳 이상 덮는 결과는 실내·근접 사진으로 보고 원본을 쓴다
-        if (await looksLikeInterior(p.maskBlob)) { p.keepBg = true; p.autoKeep = true; }
+        // 실내·엔진룸·계기판 사진은 원본을 쓴다(AI 분류, 안 되면 잘라낸 모양으로 판단)
+        if (await photoIsInterior(p)) { p.keepBg = true; p.autoKeep = true; }
       }
       await db.putVehicle({ ...v, studio: { ...st } });
     } finally {
@@ -633,6 +660,8 @@ async function renderStudio(id) {
       for (let k = 0; k < todo.length; k++) {
         const [p] = todo[k];
         veilShow(`번호판 찾는 중 ${k + 1} / ${todo.length}`, k / todo.length);
+        // 실내 사진(계기판 숫자 등)은 번호판으로 잘못 잡지 않게 건너뛴다
+        if (await photoIsInterior(p)) { p.plate = null; continue; }
         p.plate = await detectPlate(p.blob, { onProgress: (r) => veilShow(`번호판 AI 준비 중 ${Math.round(r * 100)}% (처음 한 번만 내려받아요)`, r) });
         p.plateAuto = true;
       }
@@ -666,8 +695,13 @@ async function renderStudio(id) {
     if (bgNow() !== 'orig') await ensureMasks();
     await ensurePlates();
     syncPlateUI();
-    if (bgNow() === 'orig') { sceneImages = v.photos.map((p, i) => baseOf(p, i)); studioSet = new Set(); return; }
+    if (bgNow() === 'orig') {
+      sceneImages = v.photos.map((p, i) => baseOf(p, i)); studioSet = new Set();
+      if (st.output === 'photos') listing = await buildListing();
+      return;
+    }
     const theme = themeOf(bgNow());
+    if (st.output === 'photos') { listing = await buildListing(); return; }
     if (st.output === 'turntable') {
       const idx = v.photos.map((p, i) => i).filter((i) => isSpinPhoto(v.photos[i]) && !v.photos[i].noSpin).slice(0, MAX_SPIN);
       spinItems = await Promise.all(idx.map(async (i) => {
@@ -696,7 +730,67 @@ async function renderStudio(id) {
     }));
     studioSet = set;
   };
-  const makeScene = () => (st.output === 'turntable' && spinItems.length
+  // 매물 사진: 사진마다 보정·배경·번호판·배너를 적용한 등록용 사진
+  const MAX_LISTING = 30;
+  const listingCache = new Map();
+  const listingPhoto = async (p, i) => {
+    const { w: W, h: H } = LISTING_SIZES[st.photoSize] || LISTING_SIZES['4:3'];
+    const showroom = bgNow() !== 'orig' && p.maskBlob && !p.keepBg;
+    const key = [p.id, plateKey(p), showroom ? bgNow() : 'orig', st.photoSize, st.enhance, st.sharpen, st.banner, st.showPrice, dealer.color, dealer.name, dealer.phone].join('|');
+    if (listingCache.has(key)) return listingCache.get(key);
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    x.imageSmoothingQuality = 'high';
+    if (showroom) {
+      const ck = `${p.id}|${plateKey(p)}`;
+      if (!cutouts.has(ck)) cutouts.set(ck, await loadCutout(baseOf(p, i), p.maskBlob));
+      let item = cutouts.get(ck);
+      const f = st.enhance ? autoToneFilter(item.cut) : 'none';
+      if (f !== 'none') {
+        const e = document.createElement('canvas');
+        e.width = item.w; e.height = item.h;
+        const ex = e.getContext('2d'); ex.filter = f; ex.drawImage(item.cut, 0, 0);
+        item = { ...item, cut: e };
+      }
+      x.drawImage(composeShowroom(item, W, H, themeOf(bgNow()), { name: dealer.name, sub: dealer.signSub, logo }), 0, 0);
+    } else {
+      const base = baseOf(p, i);
+      drawCover(x, base, W, H, st.enhance ? autoToneFilter(base) : 'none');
+    }
+    if (st.sharpen) sharpen(c, 0.4);
+    if (st.banner) drawBanner(x, W, H, { dealer, logo, vehicle: v, showPrice: st.showPrice });
+    listingCache.set(key, c);
+    return c;
+  };
+  const buildListing = async () => {
+    const out = [];
+    const n = Math.min(v.photos.length, MAX_LISTING);
+    try {
+      for (let i = 0; i < n; i++) {
+        if (n > 4) veilShow(`매물 사진 보정 중 ${i + 1} / ${n}`, i / n);
+        out.push(await listingPhoto(v.photos[i], i));
+      }
+    } finally { $('veil').hidden = true; }
+    return out;
+  };
+  const listingScene = () => {
+    const { w: W, h: H } = LISTING_SIZES[st.photoSize] || LISTING_SIZES['4:3'];
+    return {
+      W, H, duration: effD(), template: 'photos',
+      draw(ctx, t) {
+        if (!listing.length) return;
+        const i = Math.min(listing.length - 1, Math.floor(t / PHOTO_HOLD));
+        ctx.drawImage(listing[i], 0, 0);
+        const u = W / 100;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.beginPath(); ctx.roundRect(u * 2, u * 2, u * 9, u * 4.4, u * 2.2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = `700 ${u * 2.4}px ${'"IBM Plex Sans KR", sans-serif'}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(`${i + 1} / ${listing.length}`, u * 6.5, u * 4.3);
+      },
+    };
+  };
+  const makeScene = () => (st.output === 'photos' ? listingScene() : st.output === 'turntable' && spinItems.length
     ? createTurntableScene({ items: spinItems, theme: themeOf(bgNow()), sign: { name: dealer.name, sub: dealer.signSub, logo }, vehicle: v, dealer: { ...dealer, cta: st.cta }, format: st.format, duration: effD(), showPrice: st.showPrice })
     : createScene(sceneOpts()));
   const sceneOpts = () => ({ vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: effD(), showPrice: st.showPrice });
@@ -849,6 +943,8 @@ async function renderStudio(id) {
   });
   pick('durSeg', 'd', 'duration', Number);
   pick('outSeg', 'out', 'output');
+  pick('sizeSeg', 'size', 'photoSize');
+  [['enhanceSw', 'enhance'], ['sharpenSw', 'sharpen'], ['bannerSw', 'banner']].forEach(([id, k]) => $(id).addEventListener('change', (e) => { st[k] = e.target.checked; save(); build(); }));
   $('spinPick').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-spin]');
     if (!b) return;
@@ -887,6 +983,7 @@ async function renderStudio(id) {
 
   $('renderBtn').addEventListener('click', async () => {
     if (st.output === 'slides') { await makeSlides(); return; }
+    if (st.output === 'photos') { await makeListing(); return; }
     if (!window.MediaRecorder) { toast('이 브라우저는 영상 저장을 지원하지 않아요. 크롬에서 열어 주세요.'); return; }
     setPlaying(false);
     const veil = $('veil');
@@ -906,6 +1003,19 @@ async function renderStudio(id) {
     }
   });
 
+  const makeListing = async () => {
+    setPlaying(false);
+    if (!listing.length) { toast('사진을 먼저 올려 주세요.'); return; }
+    try {
+      const blobs = [];
+      for (let i = 0; i < listing.length; i++) {
+        veilShow(`매물 사진 저장 준비 ${i + 1} / ${listing.length}`, i / listing.length);
+        blobs.push(await new Promise((r) => listing[i].toBlob(r, 'image/jpeg', 0.92)));
+      }
+      await db.putVehicle({ ...v, studio: { ...st }, videoAt: Date.now(), videoFormat: `매물 사진 ${blobs.length}장` });
+      showSlides(blobs, { kind: 'listing' });
+    } finally { $('veil').hidden = true; }
+  };
   let slideUrls = [];
   const makeSlides = async () => {
     setPlaying(false);
@@ -922,34 +1032,40 @@ async function renderStudio(id) {
       $('veil').hidden = true;
     }
   };
-  const showSlides = (blobs) => {
+  const showSlides = (blobs, { kind = 'slides' } = {}) => {
+    const isListing = kind === 'listing';
     slideUrls.forEach((u) => URL.revokeObjectURL(u));
     slideUrls = blobs.map((b) => URL.createObjectURL(b));
-    const base = `${(v.plate || fmt.title(v)).replace(/[\\/:*?"<>|\s]+/g, '_')}_${st.format.replace(':', 'x')}`;
+    const base = `${(v.plate || fmt.title(v)).replace(/[\\/:*?"<>|\s]+/g, '_')}_${(isListing ? st.photoSize : st.format).replace(':', 'x')}`;
     const files = blobs.map((b, i) => new File([b], `${base}_${String(i + 1).padStart(2, '0')}.jpg`, { type: 'image/jpeg' }));
     const canShare = !!(navigator.canShare && navigator.canShare({ files: files.slice(0, 1) }));
     const r = $('result');
     r.hidden = false;
     r.innerHTML = `
-      <h3>완성된 사진 슬라이드 <span class="num">${blobs.length}장</span></h3>
-      <ol class="slide-grid" data-format="${st.format}">${slideUrls.map((u, i) => `<li><img src="${u}" alt="슬라이드 ${i + 1}"><span class="num">${i + 1}</span></li>`).join('')}</ol>
-      ${canShare ? '<button class="btn btn-primary btn-block" id="shareBtn" type="button">휴대폰에서 바로 공유 (틱톡·인스타)</button>' : ''}
+      <h3>${isListing ? '완성된 매물 사진' : '완성된 사진 슬라이드'} <span class="num">${blobs.length}장</span></h3>
+      <ol class="slide-grid" data-format="${isListing ? '16:9' : st.format}">${slideUrls.map((u, i) => `<li><img src="${u}" alt="슬라이드 ${i + 1}"><span class="num">${i + 1}</span></li>`).join('')}</ol>
+      ${canShare ? `<button class="btn btn-primary btn-block" id="shareBtn" type="button">${isListing ? '휴대폰에서 바로 공유' : '휴대폰에서 바로 공유 (틱톡·인스타)'}</button>` : ''}
       <button class="btn ${canShare ? 'btn-quiet' : 'btn-primary'} btn-block" id="zipBtn" type="button">사진 ${blobs.length}장 저장 (ZIP)</button>
       <div class="field"><label for="caption">게시 문구</label><textarea id="caption" rows="8">${esc(buildCaption(v))}</textarea></div>
       <button class="btn btn-quiet btn-block" id="copyBtn" type="button">게시 문구 복사</button>
-      <p class="hint">틱톡 스튜디오의 "사진 올리기"에서 순서대로 고르면 넘겨 보는 사진 게시물이 돼요. 음악은 틱톡에서 고르세요.</p>
+      ${isListing ? `<p class="hint">파일 이름 순서가 사진 순서예요. 매물 등록 화면에서 한꺼번에 골라 올리세요.</p>
+      <div class="channels">
+        <a href="https://www.bobaedream.co.kr/" target="_blank" rel="noopener">보배드림</a>
+        <a href="https://www.encar.com/" target="_blank" rel="noopener">엔카</a>
+        <a href="https://web.chutcha.net/" target="_blank" rel="noopener">첫차</a>
+      </div>` : `<p class="hint">틱톡 스튜디오의 "사진 올리기"에서 순서대로 고르면 넘겨 보는 사진 게시물이 돼요. 음악은 틱톡에서 고르세요.</p>
       <div class="channels">
         <a href="https://www.tiktok.com/tiktokstudio/upload" target="_blank" rel="noopener">틱톡 사진 올리기</a>
         <a href="https://www.instagram.com/" target="_blank" rel="noopener">인스타 캐러셀</a>
         <a href="https://www.youtube.com/upload" target="_blank" rel="noopener">유튜브 커뮤니티</a>
-      </div>`;
+      </div>`}`;
     $('zipBtn').addEventListener('click', async () => {
       if (!window.JSZip) { toast('압축 도구를 불러오지 못했어요. 새로고침해 주세요.'); return; }
       const zip = new JSZip();
       files.forEach((f) => zip.file(f.name, f));
       const blob = await zip.generateAsync({ type: 'blob' });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = `${base}_slides.zip`;
+      a.href = URL.createObjectURL(blob); a.download = `${base}_${isListing ? 'photos' : 'slides'}.zip`;
       document.body.append(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     });

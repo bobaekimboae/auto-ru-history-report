@@ -1,4 +1,6 @@
-// 번호판 찾기 워커. YOLOS 번호판 모델(onnx-community/yolos-small-finetuned-license-plate-detection-ONNX)로 위치를 찾는다.
+// 사진 판별 워커.
+// - 번호판 찾기: YOLOS 번호판 모델(onnx-community/yolos-small-finetuned-license-plate-detection-ONNX)
+// - 외관/실내 가리기: ResNet-18(ImageNet) 분류에서 자동차 외관 종류의 점수를 더한다
 // 사진은 브라우저 안에서만 처리되고 서버로 전송되지 않는다.
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 
@@ -42,6 +44,22 @@ function load(force) {
   return loading;
 }
 
+// ImageNet에서 차 바깥 모습에 해당하는 분류
+const EXTERIOR = ['sports car', 'convertible', 'grille', 'beach wagon', 'minivan', 'limousine', 'jeep', 'car wheel', 'racer', 'pickup', 'cab', 'police van', 'moving van', 'tow truck', 'ambulance', 'Model T', 'go-kart', 'golfcart', 'trailer truck', 'fire engine', 'recreational vehicle'];
+let classifier = null;
+const loadClassifier = () => {
+  classifier ||= pipeline('image-classification', 'Xenova/resnet-18', { device: 'wasm', dtype: 'q8', progress_callback: progressReporter() });
+  return classifier;
+};
+async function exteriorScore(blob) {
+  const cls = await loadClassifier();
+  const url = URL.createObjectURL(blob);
+  try {
+    const top = await cls(url, { top_k: 5 });
+    return top.reduce((s, r) => s + (EXTERIOR.some((n) => r.label.split(',')[0].trim() === n) ? r.score : 0), 0);
+  } finally { URL.revokeObjectURL(url); }
+}
+
 const run = async (blob) => {
   const url = URL.createObjectURL(blob);
   try { return await detector(url, { threshold: 0.5, percentage: true }); }
@@ -49,6 +67,11 @@ const run = async (blob) => {
 };
 
 self.onmessage = async ({ data }) => {
+  if (data.type === 'classify') {
+    try { postMessage({ type: 'exterior', id: data.id, score: await exteriorScore(data.blob) }); }
+    catch (err) { classifier = null; postMessage({ type: 'run-error', id: data.id, message: String(err?.message || err) }); }
+    return;
+  }
   if (data.type !== 'run') return;
   const { id, blob } = data;
   try {
