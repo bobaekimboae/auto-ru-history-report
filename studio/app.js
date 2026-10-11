@@ -1,8 +1,9 @@
 // 매물 숏폼 스튜디오: 대시보드 · 차량 등록(사진 정렬) · 영상 만들기 · 상사 설정
 import { db } from './db.js';
-import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards } from './render.js';
+import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards, usedPhotoIndices } from './render.js';
 import { playMusic } from './music.js';
-import { makeMask, loadCutout, composeShowroom } from './showroom.js';
+import { makeMask, loadCutout, composeShowroom, looksLikeInterior } from './showroom.js';
+import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
 
 const $ = (id) => document.getElementById(id);
 const view = $('view');
@@ -66,6 +67,7 @@ async function route() {
   else if ((m = path.match(/^\/vehicle\/([\w-]+)\/video$/))) await renderStudio(m[1]);
   else if ((m = path.match(/^\/vehicle\/([\w-]+)$/))) await renderEditor(m[1]);
   else if (path === '/settings') await renderSettings();
+  else if (path === '/import') await renderImportReceiver();
   else location.hash = '#/';
   view.focus({ preventScroll: true });
   window.scrollTo(0, 0);
@@ -85,6 +87,31 @@ async function renderDashboard() {
       </div>
       <a class="btn btn-primary" href="#/vehicle/new"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>차량 등록</a>
     </header>
+    <form class="import" id="importForm" novalidate>
+      <div class="import-head">
+        <strong>첫차 매물로 바로 만들기</strong>
+        <span>매물 사진과 차량 정보를 그대로 가져와 영상 화면까지 바로 열어요.</span>
+      </div>
+      ${apiBase() ? `
+      <div class="import-row">
+        <label class="sr-only" for="importUrl">매물 링크</label>
+        <input id="importUrl" type="url" inputmode="url" placeholder="첫차 매물 링크 또는 검색 목록 링크 붙여넣기" autocomplete="off" required>
+        <button class="btn btn-primary" id="importBtn" type="submit">가져오기</button>
+      </div>
+      <p class="import-status" id="importStatus" role="status" aria-live="polite"></p>
+      <ul class="import-list" id="importList" hidden></ul>` : ''}
+      <details class="bm" ${apiBase() ? '' : 'open'}>
+        <summary>${apiBase() ? '다른 방법: 첫차 화면에서 버튼 한 번으로 보내기' : '첫차 화면에서 버튼 한 번으로 보내기'}</summary>
+        <ol class="bm-steps">
+          <li><span>이 버튼을 브라우저 즐겨찾기 막대로 끌어다 놓으세요. 한 번만 하면 돼요.</span>
+            <a class="bm-btn" id="bmLink" href="#" title="즐겨찾기 막대로 끌어다 놓으세요">첫차 → 숏폼 보내기</a></li>
+          <li><span>첫차에서 매물 상세 페이지를 열고 즐겨찾기 막대의 <b>첫차 → 숏폼 보내기</b>를 누르세요.</span></li>
+          <li><span>새 창에 이 스튜디오가 열리면서 사진·정보를 가져오고 영상 화면이 열려요.</span></li>
+        </ol>
+        ${apiBase() ? '' : '<p class="hint">링크를 붙여넣어 가져오려면 가져오기 서버가 필요해요. 이 저장소를 Vercel에 연결하면 자동으로 켜져요.</p>'}
+      </details>
+      <p class="hint">우리 상사가 올린 매물만 가져와 쓰세요. 다른 상사의 사진과 문구는 허락 없이 쓸 수 없어요.</p>
+    </form>
     ${!dealer.name ? `<a class="notice" href="#/settings"><b>상사 정보를 먼저 넣어 주세요.</b> 모든 영상에 상사명·로고·연락처가 자동으로 들어가요. <span>설정하기 →</span></a>` : ''}
     <section class="stats" aria-label="요약">
       <div class="stat"><span class="stat-k">등록 차량</span><span class="stat-v num">${list.length}</span></div>
@@ -111,6 +138,7 @@ async function renderDashboard() {
         </div>
       </section>`}
   `;
+  setupImport();
   $('sampleBtn')?.addEventListener('click', async () => {
     const v = await makeSampleVehicle();
     location.hash = `#/vehicle/${v.id}/video`;
@@ -120,6 +148,100 @@ async function renderDashboard() {
     if (!b) return;
     document.querySelectorAll('#filterSeg [data-f]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
     document.querySelectorAll('#vgrid .vcard').forEach((c) => { c.hidden = b.dataset.f !== 'all' && c.dataset.s !== b.dataset.f; });
+  });
+}
+
+// ---------- 즐겨찾기 버튼으로 받기 ----------
+async function renderImportReceiver() {
+  setNav('');
+  view.innerHTML = `
+    <header class="page-head"><div><p class="eyebrow">첫차에서 가져오기</p><h1>매물을 받는 중이에요</h1></div></header>
+    <section class="card receive">
+      <div class="spinner" id="rcvSpin"></div>
+      <p class="receive-status" id="rcvStatus" role="status" aria-live="polite">첫차 페이지에서 매물 정보를 받는 중…</p>
+      <a class="btn btn-quiet" href="#/" id="rcvBack" hidden>대시보드로</a>
+    </section>`;
+  const setStatus = (msg, tone) => { $('rcvStatus').textContent = msg; $('rcvStatus').dataset.tone = tone || ''; };
+  try {
+    const l = await receiveFromBookmarklet();
+    setStatus(`${fmt.title(l)} 정보를 받았어요.`);
+    await createFromListing(l, setStatus);
+  } catch (err) {
+    setStatus(err.message, 'error');
+    $('rcvSpin').hidden = true;
+    $('rcvBack').hidden = false;
+  }
+}
+
+// ---------- 매물 링크 가져오기 ----------
+// 가져온 매물로 차량을 만들고 영상 화면으로 간다
+async function createFromListing(l, setStatus) {
+  setStatus(`사진 내려받는 중 0 / ${Math.min(20, l.photos.length)}`);
+  const photos = await downloadPhotos(l.photos, shrinkPhoto, {
+    fallbacks: l.photoFallbacks,
+    onProgress: (n, total) => setStatus(`사진 내려받는 중 ${n} / ${total}`),
+  });
+  if (!photos.length) throw new Error('사진을 내려받지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+  const v = {
+    id: uid(), createdAt: Date.now(), photos, source: { site: l.source, url: l.sourceUrl, importedAt: Date.now() },
+    plate: l.plate, maker: l.maker, model: l.model, trim: l.trim, year: l.year, mileage: l.mileage,
+    fuel: l.fuel, transmission: l.transmission, color: l.color, accident: l.accident, price: l.price,
+    highlights: (l.highlights || []).join('\n'), description: l.description,
+  };
+  await db.putVehicle(v);
+  toast(`${fmt.title(v)} 매물을 가져왔어요. 사진 ${photos.length}장`);
+  location.hash = `#/vehicle/${v.id}/video`;
+}
+
+function setupImport() {
+  const bm = $('bmLink');
+  bm.href = bookmarkletHref(new URL('.', location.href.split('#')[0]).href.split('?')[0]);
+  bm.addEventListener('click', (e) => { e.preventDefault(); toast('누르지 말고 즐겨찾기 막대로 끌어다 놓으세요.'); });
+  const form = $('importForm');
+  if (!$('importUrl')) { form.addEventListener('submit', (e) => e.preventDefault()); return; }
+  const status = $('importStatus');
+  const listEl = $('importList');
+  const btn = $('importBtn');
+  let busy = false;
+  const setStatus = (msg, tone = '') => { status.textContent = msg; status.dataset.tone = tone; };
+
+  const importListing = async (url) => {
+    busy = true; btn.disabled = true;
+    try {
+      setStatus('매물 정보를 가져오는 중…');
+      const data = await fetchListing(url);
+      if (data.type === 'list') { showList(data.items); return; }
+      await createFromListing(data.listing, setStatus);
+    } catch (err) {
+      setStatus(err.message, 'error');
+    } finally {
+      busy = false; btn.disabled = false;
+    }
+  };
+
+  const showList = (items) => {
+    setStatus(`매물 ${items.length}대를 찾았어요. 영상으로 만들 매물을 고르세요.`);
+    listEl.hidden = false;
+    listEl.innerHTML = items.map((it, i) => `
+      <li><button type="button" class="pick" data-i="${i}">
+        ${it.thumb ? `<img src="${esc(it.thumb)}" alt="" loading="lazy">` : '<span class="nophoto">사진 없음</span>'}
+        <span class="pick-body"><strong>${esc(it.title)}</strong><small>${esc([it.year, it.mileage].filter(Boolean).join(' · '))}</small><b class="num">${esc(fmt.price(it.price))}</b></span>
+      </button></li>`).join('');
+    listEl.onclick = (e) => {
+      const b = e.target.closest('.pick');
+      if (!b || busy) return;
+      listEl.querySelectorAll('.pick').forEach((x) => x.classList.toggle('is-loading', x === b));
+      importListing(items[Number(b.dataset.i)].url);
+    };
+  };
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (busy) return;
+    const url = $('importUrl').value.trim();
+    if (!/^https?:\/\//.test(url)) { setStatus('매물 링크(https://로 시작하는 주소)를 붙여넣어 주세요.', 'error'); return; }
+    listEl.hidden = true;
+    importListing(url);
   });
 }
 
@@ -301,6 +423,7 @@ async function renderStudio(id) {
       <div>
         <p class="eyebrow"><a href="#/">대시보드</a> / <a href="#/vehicle/${v.id}">${esc(fmt.title(v))}</a> / 영상 만들기</p>
         <h1>영상 만들기</h1>
+        ${v.source ? `<p class="hint">첫차 매물에서 가져온 정보예요. 가격·주행거리가 맞는지 확인해 주세요 · <a href="${esc(v.source.url)}" target="_blank" rel="noopener">원본 매물 보기</a></p>` : ''}
       </div>
       <a class="btn btn-quiet" href="#/vehicle/${v.id}">사진·정보 수정</a>
     </header>
@@ -387,7 +510,9 @@ async function renderStudio(id) {
   const composites = new Map();
   const veilShow = (text, ratio) => { $('veil').hidden = false; $('veilText').textContent = text; $('veilBar').style.width = `${Math.round((ratio || 0) * 100)}%`; };
   const ensureMasks = async () => {
-    const todo = v.photos.map((p, i) => [p, i]).filter(([p]) => !p.keepBg && !p.maskBlob);
+    // 영상에 나오는 사진만 배경을 지운다(사진이 많은 매물도 빨리 끝나게)
+    const used = new Set(usedPhotoIndices(st.template, st.duration, v.photos.length));
+    const todo = v.photos.map((p, i) => [p, i]).filter(([p, i]) => used.has(i) && !p.keepBg && !p.maskBlob);
     if (!todo.length) return;
     try {
       for (let k = 0; k < todo.length; k++) {
@@ -396,6 +521,8 @@ async function renderStudio(id) {
         p.maskBlob = await makeMask(p.blob, images[i].width, images[i].height, {
           onProgress: (r) => veilShow(`AI 준비 중 ${Math.round(r * 100)}% (처음 한 번만 내려받아요)`, r),
         });
+        // 화면 가장자리를 두 곳 이상 덮는 결과는 실내·근접 사진으로 보고 원본을 쓴다
+        if (await looksLikeInterior(p.maskBlob)) { p.keepBg = true; p.autoKeep = true; }
       }
       await db.putVehicle({ ...v, studio: { ...st } });
     } finally {
