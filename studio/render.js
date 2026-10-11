@@ -1,3 +1,5 @@
+import { spotToImage, drawSpot } from './spots.js';
+
 // 숏폼 영상 엔진: 차량 사진과 매물 정보를 템플릿에 맞춰 캔버스에 그리고, MediaRecorder로 MP4/WebM을 만든다.
 
 export const FORMATS = {
@@ -190,6 +192,22 @@ export function createScene(opts) {
     }
     ctx.drawImage(img, x, y, dw, dh);
     ctx.restore();
+    return { x, y, dw, dh };
+  }
+
+  // 사진에 찍어 둔 핫스팟(특징·흠집)을 컷이 시작되고 조금 뒤에 하나씩 띄운다
+  const spots = opts.spots || [];
+  function drawSpots(ctx, idx, place, local, t) {
+    const list = (spots[idx] || []).slice(0, 3);
+    if (!list.length || !place) return;
+    const img = images[idx];
+    list.forEach((sp, k) => {
+      const [ix, iy] = spotToImage(img, sp);
+      const x = place.x + ix * place.dw / img.width, y = place.y + iy * place.dh / img.height;
+      if (x < 0 || x > W || y < 0 || y > H) return;
+      const p = clamp01((local - 0.18 - k * 0.14) / 0.2);
+      drawSpot(ctx, x, y, sp, u, { p, t, side: x < W / 2 ? 1 : -1, W });
+    });
   }
 
   function drawLetterbox(ctx) {
@@ -352,7 +370,7 @@ export function createScene(opts) {
         drawPhoto(ctx, s.imgIdx, local, s.dir, k);
       }
     } else {
-      drawPhoto(ctx, s.imgIdx, local, s.dir, 1);
+      drawSpots(ctx, s.imgIdx, drawPhoto(ctx, s.imgIdx, local, s.dir, 1), local, t);
     }
     drawFact(ctx, s.fact, local);
     const a = clamp01((t - introD) / 0.4);

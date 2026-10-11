@@ -86,6 +86,7 @@ export function composeShowroom(item, W, H, theme, sign, bg3d = null) {
   drawReflection(ctx, item, scale, dx, dy, carH);
   drawShadow(ctx, item, scale, dx, dy, carH, 0.6);
   ctx.drawImage(item.cut, dx, dy, item.w * scale, item.h * scale);
+  out.xf = { dx, dy, scale, sw: item.w, sh: item.h };   // 원본 사진 좌표 → 합성 사진 좌표(핫스팟 위치용)
   return out;
 }
 
@@ -104,5 +105,6 @@ function composeOn3D(item, W, H, bg3d) {
   drawReflection(ctx, item, scale, dx, dy, carH);
   drawShadow(ctx, item, scale, dx, dy, carH, 0.7);
   ctx.drawImage(item.cut, dx, dy, item.w * scale, item.h * scale);
+  out.xf = { dx, dy, scale, sw: item.w, sh: item.h };   // 원본 사진 좌표 → 합성 사진 좌표(핫스팟 위치용)
   return out;
 }
