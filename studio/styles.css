@@ -385,3 +385,6 @@ a { color: inherit; }
 .spin-pick button[aria-pressed="false"]::after { content: '빠짐'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; background: rgb(0 0 0 / 45%); border-radius: 4px; }
 .spin-pick img { display: block; width: 56px; height: 42px; object-fit: cover; border-radius: 4px; }
 .spin-pick .num { position: absolute; left: 2px; top: 1px; padding: 0 3px; border-radius: 3px; background: rgb(0 0 0 / 65%); color: #fff; font-size: 10px; }
+.narr-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 8px; }
+.narr-row select { flex: 1; min-width: 88px; height: 32px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); padding: 0 8px; }
+#narrText { font-size: 14px; line-height: 1.55; }
