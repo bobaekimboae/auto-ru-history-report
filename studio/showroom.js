@@ -11,6 +11,7 @@ let onModelProgress = null;
 function getWorker() {
   if (worker) return worker;
   worker = new Worker(new URL('../bg-remover/worker.js', import.meta.url), { type: 'module' });
+  worker.postMessage({ type: 'config', mobile: matchMedia('(pointer: coarse)').matches });
   worker.onmessage = ({ data }) => {
     if (data.type === 'progress') onModelProgress?.(data.loaded / data.total);
     else if (data.type === 'mask' || data.type === 'run-error') {

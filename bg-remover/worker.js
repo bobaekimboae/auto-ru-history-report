@@ -10,7 +10,10 @@ let loading = null;
 let backend = null;
 
 // fp16을 지원하는 GPU면 WebGPU(84MB), 아니면 CPU용 경량 모델(42MB)을 쓴다.
+let mobile = /Android|iPhone|iPad|iPod/i.test(self.navigator?.userAgent || '');
 async function pickBackend() {
+  // 휴대폰 GPU는 큰 모델에서 멈추거나 꺼지는 일이 잦아 CPU용 경량 모델을 쓴다
+  if (mobile) return { device: 'wasm', dtype: 'q8' };
   try {
     const adapter = self.navigator?.gpu && await navigator.gpu.requestAdapter();
     if (adapter && adapter.features.has('shader-f16')) return { device: 'webgpu', dtype: 'fp16' };
@@ -53,6 +56,7 @@ async function segment(blob) {
 }
 
 self.onmessage = async ({ data }) => {
+  if (data.type === 'config') { mobile = !!data.mobile || mobile; return; }
   if (data.type === 'load') { load().catch(() => {}); return; }
   if (data.type !== 'run') return;
   const { id, blob } = data;

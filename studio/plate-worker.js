@@ -13,6 +13,7 @@ let backend = null;
 
 // fp16을 지원하는 GPU면 WebGPU(31MB), 아니면 CPU용 모델(57MB)을 쓴다.
 async function pickBackend() {
+  if (/Android|iPhone|iPad|iPod/i.test(self.navigator?.userAgent || '')) return { device: 'wasm', dtype: 'q8' };
   try {
     const adapter = self.navigator?.gpu && await navigator.gpu.requestAdapter();
     if (adapter && adapter.features.has('shader-f16')) return { device: 'webgpu', dtype: 'q4f16' };
