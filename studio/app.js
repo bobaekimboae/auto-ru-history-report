@@ -1,6 +1,6 @@
 // 매물 숏폼 스튜디오: 대시보드 · 차량 등록(사진 정렬) · 영상 만들기 · 상사 설정
 import { db } from './db.js';
-import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards, usedPhotoIndices } from './render.js';
+import { FORMATS, TEMPLATES, createScene, recordScene, fmt, factCards, usedPhotoIndices, slidePlan, renderSlides } from './render.js';
 import { playMusic } from './music.js';
 import { makeMask, loadCutout, composeShowroom, looksLikeInterior } from './showroom.js';
 import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
@@ -11,7 +11,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
 const DEALER_DEFAULTS = { name: '', phone: '', region: '', color: '#df5419', logo: '', cta: '지금 바로 문의하세요', hashtags: '중고차 중고차매물 중고차추천', signSub: '' };
-const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig' };
+const STUDIO_DEFAULTS = { format: '9:16', template: 'clean', duration: 15, showPrice: true, music: true, cta: '', bg: 'orig', output: 'video' };
 const BACKGROUNDS = { orig: { label: '원본 사진', hint: '찍은 사진 그대로' }, 'brand-light': { label: '상사 쇼룸', hint: '배경을 지우고 흰 쇼룸에 간판' }, 'brand-dark': { label: '상사 쇼룸 블랙', hint: '배경을 지우고 블랙 쇼룸에 간판' } };
 const MAKERS = ['현대', '기아', '제네시스', '쉐보레', '르노코리아', 'KG모빌리티', 'BMW', '벤츠', '아우디', '폭스바겐', '볼보', '포르쉐', '렉서스', '토요타', '혼다', '테슬라', '미니', '랜드로버', '지프', '포드'];
 
@@ -443,6 +443,14 @@ async function renderStudio(id) {
 
       <aside class="controls">
         <div class="group">
+          <h3>만들 것</h3>
+          <div class="seg seg-wide" id="outSeg">
+            <button type="button" data-out="video" aria-selected="${st.output !== 'slides'}">영상 (MP4)</button>
+            <button type="button" data-out="slides" aria-selected="${st.output === 'slides'}">사진 슬라이드</button>
+          </div>
+          <p class="hint" id="outHint"></p>
+        </div>
+        <div class="group">
           <h3>형식</h3>
           <div class="opts" id="formatOpts">${Object.entries(FORMATS).map(([k, f]) => `
             <button type="button" class="opt" data-format="${k}" aria-pressed="${k === st.format}">
@@ -464,7 +472,7 @@ async function renderStudio(id) {
             </button>`).join('')}</div>
           <p class="hint" id="bgHint">${st.bg === 'orig' ? '' : '처음 한 번은 AI가 사진마다 배경을 지워요. 결과는 저장돼서 다음부터는 바로 나와요.'}</p>
         </div>
-        <div class="group">
+        <div class="group" id="durGroup">
           <h3>길이</h3>
           <div class="seg seg-wide" id="durSeg">
             ${[15, 30].map((d) => `<button type="button" data-d="${d}" aria-selected="${d === st.duration}">${d}초</button>`).join('')}
@@ -473,11 +481,11 @@ async function renderStudio(id) {
         <div class="group">
           <h3>내용</h3>
           <label class="switch"><input type="checkbox" id="showPrice" ${st.showPrice ? 'checked' : ''}><span class="track"></span>가격 보여주기</label>
-          <label class="switch"><input type="checkbox" id="music" ${st.music ? 'checked' : ''}><span class="track"></span>배경음악 넣기 <small>템플릿마다 다른 자체 음원</small></label>
+          <label class="switch" id="musicRow"><input type="checkbox" id="music" ${st.music ? 'checked' : ''}><span class="track"></span>배경음악 넣기 <small>템플릿마다 다른 자체 음원</small></label>
           <div class="field"><label for="cta">마지막 장면 문구</label><input id="cta" value="${esc(st.cta)}" maxlength="24" placeholder="예: 지금 바로 문의하세요"></div>
         </div>
         <button class="btn btn-primary btn-lg btn-block" id="renderBtn" type="button">영상 만들기</button>
-        <p class="hint">만드는 동안 영상 길이만큼 시간이 걸려요. 이 탭을 그대로 두세요.</p>
+        <p class="hint" id="renderHint">만드는 동안 영상 길이만큼 시간이 걸려요. 이 탭을 그대로 두세요.</p>
         <section class="result" id="result" hidden></section>
       </aside>
     </div>
@@ -502,6 +510,19 @@ async function renderStudio(id) {
   const PREVIEW_SCALE = 0.5;
 
   const save = () => db.putVehicle({ ...v, studio: { ...st } });
+  // 사진 슬라이드는 사진을 모두 한 번씩 보여주는 길이로 미리보기·배경 지우기를 한다
+  const slides = () => slidePlan(st.template, v.photos.length);
+  const effD = () => (st.output === 'slides' ? slides().duration : st.duration);
+  const syncOutputUI = () => {
+    const isSlides = st.output === 'slides';
+    $('durGroup').hidden = isSlides;
+    $('musicRow').hidden = isSlides;
+    $('renderBtn').textContent = isSlides ? `사진 슬라이드 만들기 (${slides().times.length}장)` : '영상 만들기';
+    $('renderHint').textContent = isSlides
+      ? '표지·사진마다 한 장·마무리 한 장으로 만들어요. 틱톡 사진 게시물은 최대 35장이고 음악은 틱톡에서 고르면 돼요.'
+      : '만드는 동안 영상 길이만큼 시간이 걸려요. 이 탭을 그대로 두세요.';
+    $('outHint').textContent = isSlides ? '넘겨 보는 사진 게시물(틱톡 사진 모드·인스타 캐러셀)용 이미지를 만들어요.' : '';
+  };
 
   // 상사 쇼룸 배경: 사진마다 배경을 지운 마스크를 만들어 저장하고, 영상 비율에 맞는 쇼룸 사진으로 합성한다
   let sceneImages = images;
@@ -511,7 +532,7 @@ async function renderStudio(id) {
   const veilShow = (text, ratio) => { $('veil').hidden = false; $('veilText').textContent = text; $('veilBar').style.width = `${Math.round((ratio || 0) * 100)}%`; };
   const ensureMasks = async () => {
     // 영상에 나오는 사진만 배경을 지운다(사진이 많은 매물도 빨리 끝나게)
-    const used = new Set(usedPhotoIndices(st.template, st.duration, v.photos.length));
+    const used = new Set(usedPhotoIndices(st.template, effD(), v.photos.length));
     const todo = v.photos.map((p, i) => [p, i]).filter(([p, i]) => used.has(i) && !p.keepBg && !p.maskBlob);
     if (!todo.length) return;
     try {
@@ -548,7 +569,7 @@ async function renderStudio(id) {
     }));
     studioSet = set;
   };
-  const sceneOpts = () => ({ vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: st.duration, showPrice: st.showPrice });
+  const sceneOpts = () => ({ vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: effD(), showPrice: st.showPrice });
   let buildToken = 0;
   const build = async () => {
     const token = ++buildToken;
@@ -565,7 +586,8 @@ async function renderStudio(id) {
     canvas.width = scene.W * PREVIEW_SCALE; canvas.height = scene.H * PREVIEW_SCALE;
     $('stage').dataset.format = st.format;
     if (playing) restart();
-    else pausedAt = Math.min(pausedAt, st.duration - 0.01);
+    else pausedAt = Math.min(pausedAt, effD() - 0.01);
+    syncOutputUI();
   };
   const stopAudio = () => { audio?.track.stop(); audio?.ctx.close(); audio = null; };
   const startAudio = () => {
@@ -573,9 +595,9 @@ async function renderStudio(id) {
     if (!soundOn || !st.music || !playing) return;
     const ac = new AudioContext();
     const offset = currentTime();
-    audio = { ctx: ac, track: playMusic(ac, ac.destination, st.template, Math.max(0.5, st.duration - offset)) };
+    audio = { ctx: ac, track: playMusic(ac, ac.destination, st.template, Math.max(0.5, effD() - offset)) };
   };
-  const currentTime = () => (playing ? ((performance.now() - t0) / 1000) % st.duration : pausedAt);
+  const currentTime = () => (playing ? ((performance.now() - t0) / 1000) % effD() : pausedAt);
   const restart = () => { t0 = performance.now(); pausedAt = 0; startAudio(); };
   let lastLoop = 0;
   const loop = () => {
@@ -584,8 +606,8 @@ async function renderStudio(id) {
     lastLoop = t;
     ctx.setTransform(PREVIEW_SCALE, 0, 0, PREVIEW_SCALE, 0, 0);
     scene.draw(ctx, t);
-    $('scrub').value = String(Math.round((t / st.duration) * 1000));
-    $('timeText').textContent = `${t.toFixed(1)} / ${st.duration}초`;
+    $('scrub').value = String(Math.round((t / effD()) * 1000));
+    $('timeText').textContent = `${t.toFixed(1)} / ${Math.round(effD())}초`;
     raf = requestAnimationFrame(loop);
   };
   await build();
@@ -602,7 +624,7 @@ async function renderStudio(id) {
   $('playBtn').addEventListener('click', () => setPlaying(!playing));
   $('scrub').addEventListener('input', (e) => {
     setPlaying(false);
-    pausedAt = (Number(e.target.value) / 1000) * st.duration;
+    pausedAt = (Number(e.target.value) / 1000) * effD();
   });
   $('soundBtn').addEventListener('click', (e) => {
     soundOn = !soundOn;
@@ -622,11 +644,13 @@ async function renderStudio(id) {
   pick('tplOpts', 'template', 'template');
   pick('bgOpts', 'bg', 'bg');
   pick('durSeg', 'd', 'duration', Number);
+  pick('outSeg', 'out', 'output');
   $('showPrice').addEventListener('change', (e) => { st.showPrice = e.target.checked; save(); build(); });
   $('music').addEventListener('change', (e) => { st.music = e.target.checked; save(); startAudio(); });
   $('cta').addEventListener('input', (e) => { st.cta = e.target.value; save(); build(); });
 
   $('renderBtn').addEventListener('click', async () => {
+    if (st.output === 'slides') { await makeSlides(); return; }
     if (!window.MediaRecorder) { toast('이 브라우저는 영상 저장을 지원하지 않아요. 크롬에서 열어 주세요.'); return; }
     setPlaying(false);
     const veil = $('veil');
@@ -645,6 +669,65 @@ async function renderStudio(id) {
       veil.hidden = true;
     }
   });
+
+  let slideUrls = [];
+  const makeSlides = async () => {
+    setPlaying(false);
+    const plan = slides();
+    try {
+      const blobs = await renderSlides(createScene(sceneOpts()), plan.times, {
+        onProgress: (n, total) => veilShow(`사진 슬라이드 만드는 중 ${n} / ${total}`, n / total),
+      });
+      await db.putVehicle({ ...v, studio: { ...st }, videoAt: Date.now(), videoFormat: `${st.format} 슬라이드` });
+      showSlides(blobs);
+    } catch (err) {
+      toast(`사진 슬라이드를 만들지 못했어요: ${err.message}`);
+    } finally {
+      $('veil').hidden = true;
+    }
+  };
+  const showSlides = (blobs) => {
+    slideUrls.forEach((u) => URL.revokeObjectURL(u));
+    slideUrls = blobs.map((b) => URL.createObjectURL(b));
+    const base = `${(v.plate || fmt.title(v)).replace(/[\\/:*?"<>|\s]+/g, '_')}_${st.format.replace(':', 'x')}`;
+    const files = blobs.map((b, i) => new File([b], `${base}_${String(i + 1).padStart(2, '0')}.jpg`, { type: 'image/jpeg' }));
+    const canShare = !!(navigator.canShare && navigator.canShare({ files: files.slice(0, 1) }));
+    const r = $('result');
+    r.hidden = false;
+    r.innerHTML = `
+      <h3>완성된 사진 슬라이드 <span class="num">${blobs.length}장</span></h3>
+      <ol class="slide-grid" data-format="${st.format}">${slideUrls.map((u, i) => `<li><img src="${u}" alt="슬라이드 ${i + 1}"><span class="num">${i + 1}</span></li>`).join('')}</ol>
+      ${canShare ? '<button class="btn btn-primary btn-block" id="shareBtn" type="button">휴대폰에서 바로 공유 (틱톡·인스타)</button>' : ''}
+      <button class="btn ${canShare ? 'btn-quiet' : 'btn-primary'} btn-block" id="zipBtn" type="button">사진 ${blobs.length}장 저장 (ZIP)</button>
+      <div class="field"><label for="caption">게시 문구</label><textarea id="caption" rows="8">${esc(buildCaption(v))}</textarea></div>
+      <button class="btn btn-quiet btn-block" id="copyBtn" type="button">게시 문구 복사</button>
+      <p class="hint">틱톡 스튜디오의 "사진 올리기"에서 순서대로 고르면 넘겨 보는 사진 게시물이 돼요. 음악은 틱톡에서 고르세요.</p>
+      <div class="channels">
+        <a href="https://www.tiktok.com/tiktokstudio/upload" target="_blank" rel="noopener">틱톡 사진 올리기</a>
+        <a href="https://www.instagram.com/" target="_blank" rel="noopener">인스타 캐러셀</a>
+        <a href="https://www.youtube.com/upload" target="_blank" rel="noopener">유튜브 커뮤니티</a>
+      </div>`;
+    $('zipBtn').addEventListener('click', async () => {
+      if (!window.JSZip) { toast('압축 도구를 불러오지 못했어요. 새로고침해 주세요.'); return; }
+      const zip = new JSZip();
+      files.forEach((f) => zip.file(f.name, f));
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = `${base}_slides.zip`;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    });
+    $('shareBtn')?.addEventListener('click', async () => {
+      try { await navigator.share({ files, title: fmt.title(v), text: buildCaption(v) }); }
+      catch (err) { if (err.name !== 'AbortError') toast('공유하지 못했어요. ZIP으로 저장해 올려 주세요.'); }
+    });
+    $('copyBtn').addEventListener('click', async () => {
+      const ta = $('caption');
+      try { await navigator.clipboard.writeText(ta.value); toast('게시 문구를 복사했어요.'); }
+      catch { ta.select(); toast('문구를 선택했어요. Ctrl+C로 복사하세요.'); }
+    });
+    r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
 
   let resultUrl = '';
   const showResult = (blob, ext) => {
@@ -675,7 +758,7 @@ async function renderStudio(id) {
     r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
   const prevCleanup = cleanup;
-  cleanup = () => { prevCleanup(); if (resultUrl) URL.revokeObjectURL(resultUrl); };
+  cleanup = () => { prevCleanup(); if (resultUrl) URL.revokeObjectURL(resultUrl); slideUrls.forEach((u) => URL.revokeObjectURL(u)); };
 }
 
 function buildCaption(v) {

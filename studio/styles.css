@@ -260,6 +260,7 @@ a { color: inherit; }
 .ratio { flex: none; width: 30px; height: 30px; display: grid; place-items: center; }
 .ratio::before { content: ""; border: 2px solid currentColor; border-radius: 3px; }
 .r9-16::before { width: 14px; height: 25px; }
+.r4-5::before { width: 19px; height: 24px; }
 .r1-1::before { width: 22px; height: 22px; }
 .r16-9::before { width: 28px; height: 16px; }
 .tpl-swatch { flex: none; width: 34px; height: 34px; border-radius: 7px; border: 1px solid rgb(0 0 0 / 10%); }
@@ -275,6 +276,11 @@ a { color: inherit; }
 .result { display: flex; flex-direction: column; gap: 10px; padding-top: 16px; border-top: 1px solid var(--line); }
 .result h3 { font-size: 15px; font-weight: 700; }
 .result-video { width: 100%; max-height: 420px; border-radius: 10px; background: #000; }
+.slide-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 420px; overflow-y: auto; }
+.slide-grid[data-format="16:9"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.slide-grid li { position: relative; }
+.slide-grid img { width: 100%; display: block; border-radius: 6px; background: #000; }
+.slide-grid span { position: absolute; left: 4px; top: 4px; padding: 0 5px; border-radius: 4px; background: rgb(0 0 0 / 65%); color: #fff; font-size: 11px; }
 .channels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .channels a { text-align: center; padding: 8px 4px; border: 1px solid var(--line); border-radius: 8px; text-decoration: none; font-size: 12.5px; font-weight: 600; }
 .channels a:hover { background: var(--surface-2); }
