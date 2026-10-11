@@ -7,6 +7,7 @@ import { detectPlate, isExterior, applyPlate, dealerPlateCanvas, PLATE_MODES } f
 import { openPlateEditor } from './plate-ui.js';
 import { STUDIO_THEMES, brandTheme, drawBrandStudio } from '../bg-remover/compose.js';
 import { createTurntableScene, isSpinPhoto } from './turntable.js';
+import { renderShowroom3D } from './showroom3d.js';
 import { LISTING_SIZES, autoToneFilter, sharpen, drawCover, drawBanner } from './enhance.js';
 import { fetchListing, downloadPhotos, apiBase, bookmarkletHref, receiveFromBookmarklet } from './importer.js';
 
@@ -711,20 +712,22 @@ async function renderStudio(id) {
         return cutouts.get(ck);
       }));
       spinCount = spinItems.length;
+      spin3d = await get3D(FORMATS[st.format].w, FORMATS[st.format].h);
       return;
     }
     const { w, h } = FORMATS[st.format];
     const sign = { name: dealer.name, sub: dealer.signSub, logo };
     const set = new Set();
+    const bg3d = await get3D(w, h);
     sceneImages = await Promise.all(v.photos.map(async (p, i) => {
       if (p.keepBg || !p.maskBlob) return baseOf(p, i);
       set.add(i);
       const pk = plateKey(p);
-      const key = `${p.id}|${bgNow()}|${st.format}|${pk}|${dealer.color}`;
+      const key = `${p.id}|${bgNow()}|${st.format}|${pk}|${dealer.color}|${bg3d ? '3d' : '2d'}`;
       if (!composites.has(key)) {
         const ck = `${p.id}|${pk}`;
         if (!cutouts.has(ck)) cutouts.set(ck, await loadCutout(baseOf(p, i), p.maskBlob));
-        composites.set(key, composeShowroom(cutouts.get(ck), w, h, theme, sign));
+        composites.set(key, composeShowroom(cutouts.get(ck), w, h, theme, sign, bg3d));
       }
       return composites.get(key);
     }));
@@ -753,7 +756,7 @@ async function renderStudio(id) {
         const ex = e.getContext('2d'); ex.filter = f; ex.drawImage(item.cut, 0, 0);
         item = { ...item, cut: e };
       }
-      x.drawImage(composeShowroom(item, W, H, themeOf(bgNow()), { name: dealer.name, sub: dealer.signSub, logo }), 0, 0);
+      x.drawImage(composeShowroom(item, W, H, themeOf(bgNow()), { name: dealer.name, sub: dealer.signSub, logo }, await get3D(W, H)), 0, 0);
     } else {
       const base = baseOf(p, i);
       drawCover(x, base, W, H, st.enhance ? autoToneFilter(base) : 'none');
@@ -790,8 +793,18 @@ async function renderStudio(id) {
       },
     };
   };
+  // 3D 쇼룸 배경(WebGL이 안 되면 null → 평면 쇼룸 그림을 쓴다)
+  const get3D = async (W, H) => {
+    const t = BACKGROUNDS[bgNow()]?.theme;
+    if (!t) return null;
+    try {
+      return await renderShowroom3D({ style: t === 'brand' ? 'light' : t, wallColor: t === 'brand' ? dealer.color : undefined, W, H,
+        sign: { name: dealer.name, sub: dealer.signSub, logo }, accent: dealer.color || '#df5419' });
+    } catch (err) { console.warn('3D 쇼룸을 만들지 못해 평면 배경을 써요', err); return null; }
+  };
+  let spin3d = null;
   const makeScene = () => (st.output === 'photos' ? listingScene() : st.output === 'turntable' && spinItems.length
-    ? createTurntableScene({ items: spinItems, theme: themeOf(bgNow()), sign: { name: dealer.name, sub: dealer.signSub, logo }, vehicle: v, dealer: { ...dealer, cta: st.cta }, format: st.format, duration: effD(), showPrice: st.showPrice })
+    ? createTurntableScene({ items: spinItems, bg3d: spin3d, theme: themeOf(bgNow()), sign: { name: dealer.name, sub: dealer.signSub, logo }, vehicle: v, dealer: { ...dealer, cta: st.cta }, format: st.format, duration: effD(), showPrice: st.showPrice })
     : createScene(sceneOpts()));
   const sceneOpts = () => ({ vehicle: v, images: sceneImages, studio: studioSet, dealer: { ...dealer, cta: st.cta }, logo, template: st.template, format: st.format, duration: effD(), showPrice: st.showPrice });
   let buildToken = 0;

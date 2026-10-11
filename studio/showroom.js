@@ -67,7 +67,8 @@ export async function loadCutout(photoBitmap, maskBlob) {
 }
 
 /** 영상 한 장면 크기(W×H)의 쇼룸 사진을 그린다. sign: { name, sub, logo } */
-export function composeShowroom(item, W, H, theme, sign) {
+export function composeShowroom(item, W, H, theme, sign, bg3d = null) {
+  if (bg3d) return composeOn3D(item, W, H, bg3d);
   const out = canvas(W, H);
   const ctx = out.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
@@ -84,6 +85,24 @@ export function composeShowroom(item, W, H, theme, sign) {
   drawBrandStudio(ctx, W, H, horizon, theme, sign);
   drawReflection(ctx, item, scale, dx, dy, carH);
   drawShadow(ctx, item, scale, dx, dy, carH, 0.6);
+  ctx.drawImage(item.cut, dx, dy, item.w * scale, item.h * scale);
+  return out;
+}
+
+/** 3D로 렌더링한 쇼룸 위에 차를 세운다. bg3d: { canvas, floorY, carW } */
+function composeOn3D(item, W, H, bg3d) {
+  const out = canvas(W, H);
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  const b = item.bbox;
+  // 옆모습은 너비, 앞·뒤 모습은 높이로 맞춰 사진마다 차 크기가 같아 보이게 한다
+  const scale = Math.min(bg3d.carW / b.w, (bg3d.carW * 0.42) / b.h);
+  const carH = b.h * scale;
+  const dx = W / 2 - (b.x + b.w / 2) * scale;
+  const dy = bg3d.floorY - (b.y + b.h) * scale;
+  ctx.drawImage(bg3d.canvas, 0, 0);
+  drawReflection(ctx, item, scale, dx, dy, carH);
+  drawShadow(ctx, item, scale, dx, dy, carH, 0.7);
   ctx.drawImage(item.cut, dx, dy, item.w * scale, item.h * scale);
   return out;
 }

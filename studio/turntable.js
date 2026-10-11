@@ -40,16 +40,19 @@ export function createTurntableScene(o) {
   const spinStart = 0.3, spinEnd = D - outroD;
 
   // 무대와 차 크기: 모든 사진의 차가 같은 높이로 보이게 너비·높이 한도 중 작은 쪽을 쓴다
-  const floorY = H * (vertical ? 0.66 : 0.74);
-  const maxW = W * (vertical ? 0.9 : 0.6);
+  const bg3d = o.bg3d || null;
+  const floorY = bg3d ? bg3d.floorY : H * (vertical ? 0.66 : 0.74);
+  const maxW = bg3d ? bg3d.carW : W * (vertical ? 0.9 : 0.6);
   const maxH = maxW * 0.44;
-  const rx = maxW * 0.6, ry = rx * 0.17;
-  const cx = W / 2, cy = floorY - ry * 0.25;
+  const pod = bg3d?.podium;
+  const rx = pod ? pod.rx : maxW * 0.6, ry = pod ? pod.ry : rx * 0.17;
+  const cx = W / 2, cy = pod ? pod.cy : floorY - ry * 0.25;
   const horizon = Math.max(H * 0.3, floorY - maxH * 0.62);
 
   // 배경(벽·바닥·간판)은 한 번만 그린다
   const bg = canvas(W, H);
-  drawBrandStudio(bg.getContext('2d'), W, H, horizon, theme, sign);
+  if (bg3d) bg.getContext('2d').drawImage(bg3d.canvas, 0, 0);
+  else drawBrandStudio(bg.getContext('2d'), W, H, horizon, theme, sign);
 
   // 사진마다 차·그림자·반사를 미리 그린 층
   const layers = items.map((item) => {
@@ -71,6 +74,7 @@ export function createTurntableScene(o) {
   function drawDisk(ctx, rot) {
     const thick = ry * 0.22;
     ctx.save();
+    if (pod) { drawGrooves(ctx, rot); ctx.restore(); return; }
     // 바닥 그림자
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.filter = `blur(${ry * 0.25}px)`;
@@ -86,6 +90,13 @@ export function createTurntableScene(o) {
     g.addColorStop(1, dark ? '#16181b' : '#c9cdd2');
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+    drawGrooves(ctx, rot);
+    ctx.restore();
+  }
+
+  // 도는 홈과 테두리 위를 도는 빛(3D 무대 위에도 겹쳐 그린다)
+  function drawGrooves(ctx, rot) {
+    ctx.save();
     // 도는 홈: 앞쪽(아래)이 더 잘 보인다
     ctx.lineWidth = Math.max(1, u * 0.18);
     for (let k = 0; k < 36; k++) {
