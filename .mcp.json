@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "pexels": {
+      "command": "npx",
+      "args": ["-y", "mcp-pexels@1.0.2"],
+      "env": {
+        "PEXELS_API_KEY": "${PEXELS_API_KEY:-}"
+      }
+    },
+    "pixabay": {
+      "command": "npx",
+      "args": ["-y", "pixabay-mcp@0.3.0"],
+      "env": {
+        "PIXABAY_API_KEY": "${PIXABAY_API_KEY:-}"
+      }
+    }
+  }
+}
