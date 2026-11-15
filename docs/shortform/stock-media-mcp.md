@@ -18,9 +18,11 @@ claude.ai 커넥터 목록에는 Pexels·Pixabay가 없다(2026-11-15 검색). �
 
 | 도구 | 기능 | 비고 |
 | --- | --- | --- |
-| Orshot | `orshot_search_stock_media` | 스톡 이미지·영상 검색 |
-| AI Producer by OpusClip | `find_broll` | 프로젝트 안에서 B-roll 찾기 |
-| vidIQ | `vidiq_find_broll` | B-roll 찾기 |
+| Orshot | `orshot_search_stock_media` | **Pixabay 영상·사진 + Unsplash 사진을 키 없이 검색.** 2026-11-15 "highway driving night" 영상 검색 시험 통과(결과 500건, 1920×1080, 10~30초, 작가 출처 포함). 세로 결과는 없어서 가로로 대체됨 → 세로 컷은 9:16으로 잘라 쓴다 |
+| AI Producer by OpusClip | `find_broll` | 프로젝트 안에서 B-roll 찾기 (프로젝트가 있어야 함, 미시험) |
+| vidIQ | `vidiq_find_broll` | B-roll 찾기. **2026-11-15 크레딧 부족으로 실패** — 충전 전까지 사용 불가 |
+
+따라서 **Pixabay 영상은 지금 Orshot으로 바로 쓸 수 있다.** 별도 키가 필요한 건 Pexels뿐이다.
 
 ## 3. API 키 발급 (무료)
 
